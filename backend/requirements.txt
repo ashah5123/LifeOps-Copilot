@@ -1,0 +1,11 @@
+fastapi==0.115.12
+uvicorn==0.34.0
+pydantic==2.11.2
+pydantic-settings==2.8.1
+python-multipart==0.0.20
+google-cloud-firestore
+google-cloud-storage
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client

@@ -9,14 +9,12 @@ import AuroraBackground from "@/components/ui/AuroraBackground";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const initTheme = useAppStore((s) => s.initTheme);
-  const initAuth = useAppStore((s) => s.initAuth);
   const initCalendarEvents = useAppStore((s) => s.initCalendarEvents);
 
   useEffect(() => {
     initTheme();
-    initAuth();
     initCalendarEvents();
-  }, [initTheme, initAuth, initCalendarEvents]);
+  }, [initTheme, initCalendarEvents]);
 
   return (
     <AuthGuard>

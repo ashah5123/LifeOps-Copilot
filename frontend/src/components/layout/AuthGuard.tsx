@@ -1,13 +1,27 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/lib/store";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
   const isHydrated = useAppStore((s) => s._isHydrated);
+  const initAuth = useAppStore((s) => s.initAuth);
   const router = useRouter();
+
+  // Run before paint so we avoid a stuck "Loading..." flash; re-run after bfcache back navigation.
+  useLayoutEffect(() => {
+    initAuth();
+  }, [initAuth]);
+
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) initAuth();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, [initAuth]);
 
   useEffect(() => {
     if (isHydrated && !isAuthenticated) {

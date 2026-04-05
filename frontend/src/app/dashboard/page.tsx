@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
@@ -18,7 +18,10 @@ import TodayFeed from "@/components/feed/TodayFeed";
 import MovingBorderCard from "@/components/ui/MovingBorderCard";
 import TypewriterGreeting from "@/components/ui/TypewriterGreeting";
 import { useAppStore } from "@/lib/store";
+import * as api from "@/lib/api";
+import { mapApiFeedToFeedItems } from "@/lib/map-feed";
 import { mockDashboardSummary, mockFeedItems } from "@/lib/mock-data";
+import type { FeedItem } from "@/types";
 
 /* ============================================
    LINEAR-STYLE LIVE ANIMATED CARD SCENES
@@ -230,32 +233,6 @@ function BudgetMiniScene() {
 
 /* ============ DATA ============ */
 
-const heroCards = [
-  { label: "Emails to Reply", value: mockDashboardSummary.emailsNeedingReply, scene: LiveMailScene, accent: "border-blue-500/30" },
-  { label: "Upcoming Deadlines", value: mockDashboardSummary.deadlines, scene: LiveDeadlineScene, accent: "border-rose-500/30" },
-  { label: "Tasks Today", value: mockDashboardSummary.tasksToday, scene: LiveTaskScene, accent: "border-emerald-500/30" },
-  { label: "Budget Alerts", value: mockDashboardSummary.budgetAlerts, scene: LiveBudgetScene, accent: "border-amber-500/30" },
-];
-
-const smartCards = [
-  {
-    title: "Inbox", insight: mockDashboardSummary.inboxInsight, count: mockDashboardSummary.emailsNeedingReply,
-    icon: InboxIcon, href: "/inbox", gradient: "from-blue-500 to-indigo-600", glow: "shadow-blue-500/20", miniScene: InboxMiniScene
-  },
-  {
-    title: "Career", insight: mockDashboardSummary.careerInsight, count: 3,
-    icon: BriefcaseIcon, href: "/career", gradient: "from-violet-500 to-purple-600", glow: "shadow-violet-500/20", miniScene: CareerMiniScene
-  },
-  {
-    title: "Calendar", insight: mockDashboardSummary.calendarInsight, count: 4,
-    icon: CalendarDaysIcon, href: "/calendar", gradient: "from-emerald-500 to-green-600", glow: "shadow-emerald-500/20", miniScene: CalendarMiniScene
-  },
-  {
-    title: "Budget", insight: mockDashboardSummary.budgetInsight, count: mockDashboardSummary.budgetAlerts,
-    icon: BanknotesIcon, href: "/budget", gradient: "from-amber-500 to-orange-600", glow: "shadow-amber-500/20", miniScene: BudgetMiniScene
-  },
-];
-
 const allQuotes = [
   { text: "The secret of getting ahead is getting started.", author: "Mark Twain", tag: "productivity" },
   { text: "Success is not final, failure is not fatal: it is the courage to continue that counts.", author: "Winston Churchill", tag: "motivation" },
@@ -325,6 +302,95 @@ export default function DashboardPage() {
     "there";
   const [greeting] = useState(() => getMSTGreeting());
   const [quoteIndex, setQuoteIndex] = useState(() => Math.floor(Math.random() * allQuotes.length));
+  const [stats, setStats] = useState(() => ({ ...mockDashboardSummary }));
+  const [feedItems, setFeedItems] = useState<FeedItem[]>(() => mockFeedItems);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const summary = await api.getDashboardSummary();
+      if (cancelled) return;
+      const s = summary as {
+        todayTasks?: number;
+        upcomingDeadlines?: number;
+        pendingApprovals?: number;
+      };
+      if (typeof s.todayTasks === "number") {
+        setStats((prev) => ({
+          ...prev,
+          emailsNeedingReply: s.pendingApprovals ?? prev.emailsNeedingReply,
+          deadlines: s.upcomingDeadlines ?? prev.deadlines,
+          tasksToday: s.todayTasks ?? prev.tasksToday,
+        }));
+      }
+      const feed = await api.getTodayFeed();
+      if (cancelled || !Array.isArray(feed) || feed.length === 0) return;
+      setFeedItems(
+        mapApiFeedToFeedItems(
+          feed as { id: string; type: string; title: string; time: string }[],
+        ),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const heroCards = useMemo(
+    () => [
+      { label: "Emails to Reply", value: stats.emailsNeedingReply, scene: LiveMailScene, accent: "border-blue-500/30" },
+      { label: "Upcoming Deadlines", value: stats.deadlines, scene: LiveDeadlineScene, accent: "border-rose-500/30" },
+      { label: "Tasks Today", value: stats.tasksToday, scene: LiveTaskScene, accent: "border-emerald-500/30" },
+      { label: "Budget Alerts", value: stats.budgetAlerts, scene: LiveBudgetScene, accent: "border-amber-500/30" },
+    ],
+    [stats],
+  );
+
+  const smartCards = useMemo(
+    () => [
+      {
+        title: "Inbox",
+        insight: stats.inboxInsight,
+        count: stats.emailsNeedingReply,
+        icon: InboxIcon,
+        href: "/inbox",
+        gradient: "from-blue-500 to-indigo-600",
+        glow: "shadow-blue-500/20",
+        miniScene: InboxMiniScene,
+      },
+      {
+        title: "Career",
+        insight: stats.careerInsight,
+        count: 3,
+        icon: BriefcaseIcon,
+        href: "/career",
+        gradient: "from-violet-500 to-purple-600",
+        glow: "shadow-violet-500/20",
+        miniScene: CareerMiniScene,
+      },
+      {
+        title: "Calendar",
+        insight: stats.calendarInsight,
+        count: 4,
+        icon: CalendarDaysIcon,
+        href: "/calendar",
+        gradient: "from-emerald-500 to-green-600",
+        glow: "shadow-emerald-500/20",
+        miniScene: CalendarMiniScene,
+      },
+      {
+        title: "Budget",
+        insight: stats.budgetInsight,
+        count: stats.budgetAlerts,
+        icon: BanknotesIcon,
+        href: "/budget",
+        gradient: "from-amber-500 to-orange-600",
+        glow: "shadow-amber-500/20",
+        miniScene: BudgetMiniScene,
+      },
+    ],
+    [stats],
+  );
 
   // Rotate quotes every 20 seconds (blur / flip style)
   useEffect(() => {
@@ -464,7 +530,7 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-lg font-semibold text-text-primary mb-4 tracking-tight">Today&apos;s Actions</h2>
             <Card padding="sm">
-              <TodayFeed items={mockFeedItems} />
+              <TodayFeed items={feedItems} />
             </Card>
           </div>
         </div>

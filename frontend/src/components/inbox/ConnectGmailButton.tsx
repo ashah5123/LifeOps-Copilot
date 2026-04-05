@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import Button from "@/components/ui/Button";
 import { useAppStore } from "@/lib/store";
+import * as api from "@/lib/api";
 
 export default function ConnectGmailButton() {
   const [loading, setLoading] = useState(false);
@@ -12,11 +13,33 @@ export default function ConnectGmailButton() {
 
   const handleConnect = async () => {
     setLoading(true);
-    // Simulate OAuth flow
-    await new Promise((r) => setTimeout(r, 2000));
-    setGmailConnected(true);
-    addToast({ message: "Gmail connected successfully!", type: "success" });
-    setLoading(false);
+    try {
+      const result = await api.getGoogleLoginUrl();
+      const url = (result.authUrl || "").trim();
+      const canRedirect =
+        result.oauthConfigured === true && url.length > 0 && url.startsWith("https://");
+
+      if (canRedirect) {
+        window.location.assign(url);
+        return;
+      }
+
+      // Demo mode: no real Google OAuth (backend not configured or API offline)
+      await new Promise((r) => setTimeout(r, 800));
+      setGmailConnected(true);
+      addToast({
+        message:
+          result.oauthConfigured === false
+            ? "Gmail connected (demo). Add Google OAuth credentials on the server for a real inbox."
+            : "Gmail connected successfully!",
+        type: "success",
+      });
+    } catch {
+      addToast({ message: "Could not reach the server. Using demo inbox.", type: "warning" });
+      setGmailConnected(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

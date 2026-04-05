@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircleIcon, DocumentIcon } from "@heroicons/react/24/outline";
 import { useAppStore } from "@/lib/store";
+import * as api from "@/lib/api";
 
 function LiveUploadIcon() {
   return (
@@ -76,6 +77,9 @@ export default function UploadBox() {
       await new Promise((r) => setTimeout(r, 150));
       setProgress(i);
     }
+
+    // Fire-and-forget: also send to backend agent pipeline
+    api.processFileWithAgents(file).catch(() => {});
 
     setUploading(false);
     setUploaded(true);

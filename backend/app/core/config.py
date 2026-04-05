@@ -5,12 +5,36 @@ class Settings(BaseSettings):
     app_name: str = "SparkUp API"
     api_prefix: str = "/api"
     environment: str = "development"
+
+    # GCP core
+    google_cloud_project: str = "sparkup-dev"
+    vertex_location: str = "us-central1"
+    vertex_model_name: str = "gemini-2.5-flash"
     firestore_project_id: str = "sparkup-dev"
     gcs_bucket_name: str = "sparkup-uploads"
-    vertex_model_name: str = "gemini-2.5-flash"
+    document_ai_processor_id: str = ""
+
+    # Google OAuth — leave unset or use demo-* for local mock (no real Google redirect).
     google_client_id: str = "demo-client-id"
     google_client_secret: str = "demo-client-secret"
     google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
+    # Public URL of the Next.js app (OAuth success redirect).
+    frontend_base_url: str = "http://localhost:3000"
+
+    # RapidAPI — JSearch
+    rapidapi_key: str = "demo-key"
+    rapidapi_host: str = "jsearch.p.rapidapi.com"
+
+    @property
+    def is_gcp_configured(self) -> bool:
+        """True when real GCP credentials are available."""
+        return self.google_cloud_project != "sparkup-dev" and self.google_cloud_project != ""
+
+    @property
+    def is_oauth_configured(self) -> bool:
+        """True when real OAuth client credentials are set."""
+        cid = (self.google_client_id or "").strip()
+        return bool(cid) and cid != "demo-client-id"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   PlusIcon,
@@ -14,6 +14,7 @@ import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import { useAppStore } from "@/lib/store";
 import { mockApplications, mockCareerSuggestions } from "@/lib/mock-data";
+import * as api from "@/lib/api";
 import type { Application } from "@/types";
 
 const statusVariant: Record<Application["status"], "info" | "warning" | "success" | "error"> = {
@@ -43,18 +44,39 @@ const item = {
 export default function CareerPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [filter, setFilter] = useState<Application["status"] | "all">("all");
+  const [applications, setApplications] = useState<Application[]>(mockApplications);
   const addToast = useAppStore((s) => s.addToast);
 
+  useEffect(() => {
+    api.listApplications().then((data) => {
+      if (data && data.length > 0) {
+        const mapped: Application[] = data.map((d: Record<string, unknown>) => ({
+          id: String(d.id ?? d._id ?? ""),
+          company: String(d.company ?? ""),
+          role: String(d.role ?? ""),
+          status: (["applied", "interview", "offer", "rejected"].includes(String(d.status))
+            ? String(d.status)
+            : "applied") as Application["status"],
+          appliedDate: String(d.appliedDate ?? d.applied_date ?? new Date().toISOString()),
+          deadline: d.deadline ? String(d.deadline) : undefined,
+          notes: d.notes ? String(d.notes) : undefined,
+          url: d.url ?? d.job_url ? String(d.url ?? d.job_url) : undefined,
+        }));
+        setApplications(mapped);
+      }
+    });
+  }, []);
+
   const filteredApps = filter === "all"
-    ? mockApplications
-    : mockApplications.filter((a) => a.status === filter);
+    ? applications
+    : applications.filter((a) => a.status === filter);
 
   const statusCounts = {
-    all: mockApplications.length,
-    applied: mockApplications.filter((a) => a.status === "applied").length,
-    interview: mockApplications.filter((a) => a.status === "interview").length,
-    offer: mockApplications.filter((a) => a.status === "offer").length,
-    rejected: mockApplications.filter((a) => a.status === "rejected").length,
+    all: applications.length,
+    applied: applications.filter((a) => a.status === "applied").length,
+    interview: applications.filter((a) => a.status === "interview").length,
+    offer: applications.filter((a) => a.status === "offer").length,
+    rejected: applications.filter((a) => a.status === "rejected").length,
   };
 
   return (
@@ -64,7 +86,7 @@ export default function CareerPage() {
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Career Tracker</h1>
             <p className="text-sm text-text-secondary mt-0.5">
-              {mockApplications.length} applications tracked
+              {applications.length} applications tracked
             </p>
           </div>
           <Button onClick={() => setShowAddModal(true)} icon={<PlusIcon className="w-4 h-4" />}>
@@ -178,8 +200,35 @@ export default function CareerPage() {
         {/* Add Application Modal */}
         <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Application">
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
+              const form = e.currentTarget;
+              const formData = new FormData(form);
+              const company = formData.get("company") as string;
+              const role = formData.get("role") as string;
+              const status = (formData.get("status") as string) || "applied";
+              const deadline = formData.get("deadline") as string;
+              const notes = formData.get("notes") as string;
+
+              const result = await api.createApplication({
+                company,
+                role,
+                status,
+                applied_date: new Date().toISOString(),
+                notes: notes || undefined,
+              });
+
+              const newApp: Application = {
+                id: String(result.id ?? `local-${Date.now()}`),
+                company,
+                role,
+                status: status as Application["status"],
+                appliedDate: new Date().toISOString(),
+                deadline: deadline || undefined,
+                notes: notes || undefined,
+              };
+              setApplications((prev) => [newApp, ...prev]);
+
               setShowAddModal(false);
               addToast({ message: "Application added!", type: "success" });
             }}
@@ -189,6 +238,7 @@ export default function CareerPage() {
               <label className="block text-xs font-medium text-text-secondary mb-1.5">Company</label>
               <input
                 type="text"
+                name="company"
                 required
                 placeholder="e.g., Google"
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -198,6 +248,7 @@ export default function CareerPage() {
               <label className="block text-xs font-medium text-text-secondary mb-1.5">Role</label>
               <input
                 type="text"
+                name="role"
                 required
                 placeholder="e.g., Software Engineering Intern"
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -206,7 +257,7 @@ export default function CareerPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-text-secondary mb-1.5">Status</label>
-                <select className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                <select name="status" className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
                   <option value="applied">Applied</option>
                   <option value="interview">Interview</option>
                   <option value="offer">Offer</option>
@@ -216,6 +267,7 @@ export default function CareerPage() {
                 <label className="block text-xs font-medium text-text-secondary mb-1.5">Deadline</label>
                 <input
                   type="date"
+                  name="deadline"
                   className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
@@ -223,6 +275,7 @@ export default function CareerPage() {
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1.5">Notes</label>
               <textarea
+                name="notes"
                 placeholder="Any notes about this application..."
                 rows={2}
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"

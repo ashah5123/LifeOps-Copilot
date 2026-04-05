@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowPathIcon,
@@ -9,6 +10,7 @@ import {
   ArrowLeftIcon,
 } from "@heroicons/react/24/outline";
 import AppShell from "@/components/layout/AppShell";
+import * as api from "@/lib/api";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -16,6 +18,7 @@ import Badge from "@/components/ui/Badge";
 import ConnectGmailButton from "@/components/inbox/ConnectGmailButton";
 import { useAppStore } from "@/lib/store";
 import { mockGmailMessages } from "@/lib/mock-data";
+import { mapGmailApiRowsToMessages } from "@/lib/map-inbox";
 import type { GmailMessage } from "@/types";
 
 function formatTime(timestamp: string) {
@@ -90,16 +93,24 @@ function EmailDetailPanel({
 
   const handleConfirmSend = async () => {
     setSending(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    setSending(false);
-    setShowConfirmModal(false);
-    addToast({ message: "Email sent successfully!", type: "success" });
+    try {
+      await api.sendGmailMessage({
+        toEmail: message.senderEmail,
+        subject: `Re: ${message.subject}`,
+        body: draft,
+      });
+      addToast({ message: "Email sent successfully!", type: "success" });
+    } catch {
+      addToast({ message: "Failed to send email", type: "error" });
+    } finally {
+      setSending(false);
+      setShowConfirmModal(false);
+    }
   };
 
-  const handleRegenerate = () => {
-    setDraft(
-      `Hi ${message.sender.split(" ")[0]},\n\nI appreciate you reaching out about this. After careful consideration, here are my thoughts:\n\n[AI regenerated draft]\n\nLooking forward to discussing further.\n\nBest,\nVidhi`
-    );
+  const handleRegenerate = async () => {
+    const result = await api.draftReply(message.body);
+    setDraft(result.draft);
     addToast({ message: "Draft regenerated", type: "info" });
   };
 
@@ -211,18 +222,52 @@ function EmailDetailPanel({
   );
 }
 
+/** Handles ?gmail=connected query param from OAuth callback */
+function GmailCallbackHandler() {
+  const searchParams = useSearchParams();
+  const gmailConnected = useAppStore((s) => s.gmailConnected);
+  const setGmailConnected = useAppStore((s) => s.setGmailConnected);
+
+  useEffect(() => {
+    if (searchParams.get("gmail") === "connected" && !gmailConnected) {
+      setGmailConnected(true);
+    }
+  }, [searchParams, gmailConnected, setGmailConnected]);
+
+  return null;
+}
+
 export default function InboxPage() {
   const gmailConnected = useAppStore((s) => s.gmailConnected);
   const [selectedMessage, setSelectedMessage] = useState<GmailMessage | null>(null);
+  const [messages, setMessages] = useState<GmailMessage[]>(mockGmailMessages);
+
+  useEffect(() => {
+    if (!gmailConnected) return;
+    let cancelled = false;
+    (async () => {
+      const raw = await api.listGmailMessages();
+      if (cancelled) return;
+      const mapped = mapGmailApiRowsToMessages(raw as unknown[]);
+      setMessages(mapped.length > 0 ? mapped : mockGmailMessages);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gmailConnected]);
 
   return (
     <AppShell>
+      {/* Handle OAuth callback ?gmail=connected */}
+      <Suspense fallback={null}>
+        <GmailCallbackHandler />
+      </Suspense>
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Inbox</h1>
             <p className="text-sm text-text-secondary mt-0.5">
-              {gmailConnected ? `${mockGmailMessages.length} messages` : "Connect your Gmail to get started"}
+              {gmailConnected ? `${messages.length} messages` : "Connect your Gmail to get started"}
             </p>
           </div>
           {gmailConnected && (
@@ -246,7 +291,7 @@ export default function InboxPage() {
                   className={`md:col-span-2 bg-surface rounded-2xl border border-border/50 overflow-hidden ${selectedMessage ? "hidden md:block" : ""}`}
                 >
                   <div className="overflow-y-auto h-full">
-                    {mockGmailMessages.map((msg) => (
+                    {messages.map((msg) => (
                       <EmailListItem
                         key={msg.id}
                         message={msg}

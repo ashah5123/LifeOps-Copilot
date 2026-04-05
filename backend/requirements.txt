@@ -1,11 +1,21 @@
 fastapi==0.115.12
 uvicorn==0.34.0
-pydantic==2.11.2
-pydantic-settings==2.8.1
+# 2.11.x pins pydantic-core 2.33.x, which has no cp314 Windows wheel (would need Rust to build).
+pydantic>=2.12.5,<3
+pydantic-settings>=2.8.1,<3
 python-multipart==0.0.20
+httpx>=0.27.0
 google-cloud-firestore
 google-cloud-storage
+google-cloud-aiplatform
+google-cloud-documentai
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
+python-dateutil
+PyPDF2==3.0.1
+pytesseract==0.3.10
+# 10.2.0 often falls back to sdist on newer Python and fails to build on Windows; use a wheel-backed release.
+Pillow>=10.4.0,<12
+requests

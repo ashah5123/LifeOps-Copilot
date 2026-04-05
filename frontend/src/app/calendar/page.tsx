@@ -16,6 +16,7 @@ import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import { mockAISuggestedSlots } from "@/lib/mock-data";
 import { useAppStore } from "@/lib/store";
+import * as api from "@/lib/api";
 import type { CalendarEvent } from "@/types";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -276,6 +277,13 @@ export default function CalendarPage() {
                   color: "#5E6AD2",
                 };
                 addCalendarEvent(newEvent);
+                // Sync to backend (fire and forget)
+                api.createCalendarEvent({
+                  title: newEventTitle.trim(),
+                  date: selectedSlot.date,
+                  time: `${String(selectedSlot.hour).padStart(2, "0")}:00`,
+                  event_type: "other",
+                }).catch(() => {});
                 setShowAddModal(false);
                 addToast({ message: `"${newEventTitle}" added!`, type: "success" });
               }}

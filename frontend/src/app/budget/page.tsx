@@ -14,6 +14,7 @@ import {
   LockClosedIcon,
 } from "@heroicons/react/24/outline";
 import AppShell from "@/components/layout/AppShell";
+import * as api from "@/lib/api";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
@@ -193,6 +194,15 @@ export default function BudgetPage() {
     setShowAddModal(false);
     resetAddForm();
     addToast({ message: formType === "income" ? "Income entry added" : "Expense added", type: "success" });
+
+    // Fire-and-forget sync to backend
+    api.createBudgetEntry({
+      title: formDesc.trim() || "Untitled",
+      amount,
+      entry_type: formType,
+      category: formCategory,
+      date: formDate,
+    }).catch(() => {});
   };
 
   const handleDelete = (id: string) => {
@@ -234,6 +244,15 @@ export default function BudgetPage() {
     );
     setEditingEntry(null);
     addToast({ message: "Transaction updated", type: "success" });
+
+    // Fire-and-forget sync to backend
+    api.updateBudgetEntry(editingEntry.id, {
+      title: formDesc.trim() || "Untitled",
+      amount,
+      entry_type: formType,
+      category: formCategory,
+      date: formDate,
+    }).catch(() => {});
   };
 
   const saveIncome = (e: React.FormEvent) => {

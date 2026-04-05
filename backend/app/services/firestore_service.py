@@ -28,3 +28,11 @@ class FirestoreService:
             if item.get("id") == doc_id:
                 return item
         return None
+
+    def delete(self, collection: str, doc_id: str) -> bool:
+        items = self.mock_db.get(collection, [])
+        for i, item in enumerate(items):
+            if item.get("id") == doc_id:
+                items.pop(i)
+                return True
+        return False

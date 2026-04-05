@@ -77,11 +77,24 @@ Used for development and build only:
 | `tailwindcss` | ^4 |
 | `typescript` | ^5 |
 
+## Backend integration (SparkUp API)
+
+The UI keeps the same look whether the API is up or not: `src/lib/api.ts` calls the FastAPI backend and falls back to safe defaults if the request fails.
+
+1. Start the backend from the repo `backend` folder (see that folder’s README / `uvicorn` command). Default API base: `http://localhost:8000/api`.
+2. Create `frontend/.env.local` (not committed) with:
+
+   ```bash
+   NEXT_PUBLIC_API_URL=http://localhost:8000/api
+   ```
+
+3. `next.config.ts` rewrites `/api/*` to `http://localhost:8000/api/*` so same-origin requests can be proxied during dev if you use a relative base URL instead.
+
+Run **frontend** and **backend** together for live data (Gmail list, dashboard summary, budget sync, etc.).
+
 ## Environment (optional)
 
-If you add a backend later, you can set:
-
-- `NEXT_PUBLIC_API_URL` — base URL for API calls (defaults are handled in code where used).
+- `NEXT_PUBLIC_API_URL` — full URL to the API **including** `/api` path (e.g. `http://localhost:8000/api`). If unset, the client uses the same default.
 
 ## Project layout (short)
 

@@ -180,6 +180,4 @@ Built by **SparkUp**:
 
 ---
 
-## License
 
-See the [LICENSE](./LICENSE) file in this repository.

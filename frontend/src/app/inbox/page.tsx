@@ -44,8 +44,12 @@ function EmailListItem({
       transition={{ duration: 0.15 }}
       onClick={onClick}
       className={`
-        flex items-start gap-3 p-4 cursor-pointer transition-colors border-b border-border/50
-        ${isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-gray-50"}
+        flex items-start gap-3 border-b border-border/50 p-4 transition-colors
+        ${isSelected
+          ? "border-l-2 border-l-primary bg-primary/[0.12] dark:bg-primary/25 dark:shadow-[inset_0_0_0_1px_rgba(94,106,210,0.25)]"
+          : "hover:bg-zinc-100/90 dark:hover:bg-white/[0.06]"
+        }
+        cursor-pointer
       `}
     >
       <div className="flex-shrink-0 mt-0.5">
@@ -56,15 +60,15 @@ function EmailListItem({
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-0.5">
-          <p className={`text-sm truncate ${message.isUnread ? "font-semibold text-text-primary" : "font-medium text-text-secondary"}`}>
+          <p className={`text-sm truncate ${message.isUnread || isSelected ? "font-semibold text-text-primary" : "font-medium text-text-secondary"}`}>
             {message.sender}
           </p>
-          <span className="text-xs text-text-secondary whitespace-nowrap">{formatTime(message.timestamp)}</span>
+          <span className={`text-xs whitespace-nowrap ${isSelected ? "text-text-secondary" : "text-text-secondary"}`}>{formatTime(message.timestamp)}</span>
         </div>
-        <p className={`text-sm truncate ${message.isUnread ? "font-medium text-text-primary" : "text-text-secondary"}`}>
+        <p className={`text-sm truncate ${message.isUnread || isSelected ? "font-medium text-text-primary" : "text-text-secondary"}`}>
           {message.subject}
         </p>
-        <p className="text-xs text-text-secondary truncate mt-0.5">{message.preview}</p>
+        <p className={`mt-0.5 truncate text-xs ${isSelected ? "text-text-secondary" : "text-text-secondary/90"}`}>{message.preview}</p>
       </div>
     </motion.div>
   );

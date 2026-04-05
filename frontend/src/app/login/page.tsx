@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SparklesIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { useAppStore } from "@/lib/store";
+import NoiseBackground from "@/components/ui/NoiseBackground";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -29,17 +30,51 @@ export default function LoginPage() {
     // Simulate login
     await new Promise((r) => setTimeout(r, 1200));
 
-    // Demo: accept any credentials
+    const emailKey = email.toLowerCase();
+    const returningKey = `lifeops-returning-${emailKey}`;
+    let savedProfile: { name?: string; firstName?: string } | null = null;
+    if (typeof localStorage !== "undefined") {
+      try {
+        const raw = localStorage.getItem(`lifeops-profile-${emailKey}`);
+        if (raw) savedProfile = JSON.parse(raw) as { name?: string; firstName?: string };
+      } catch {
+        savedProfile = null;
+      }
+    }
+
     const namePart = email.split("@")[0];
-    const displayName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+    const fallbackFromEmail = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+    const fullName = savedProfile?.name?.trim() || fallbackFromEmail;
+    const firstName =
+      savedProfile?.firstName?.trim() ||
+      fullName.split(/\s+/)[0] ||
+      fallbackFromEmail;
+    const initials = fullName
+      .split(/\s+/)
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || firstName.slice(0, 2).toUpperCase();
+
+    const isReturning =
+      typeof localStorage !== "undefined" && localStorage.getItem(returningKey) === "true";
+
     login({
-      name: displayName,
+      name: fullName,
       email,
-      initials: displayName.substring(0, 2).toUpperCase(),
+      initials,
+      firstName,
     });
 
     setLoading(false);
-    addToast({ message: `Welcome, ${displayName}!`, type: "success" });
+    if (isReturning) {
+      addToast({ message: `Welcome back, ${firstName}!`, type: "success" });
+    } else {
+      addToast({ message: `Welcome, ${firstName}!`, type: "success" });
+    }
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(returningKey, "true");
+    }
     router.push("/dashboard");
   };
 
@@ -165,25 +200,30 @@ export default function LoginPage() {
               </motion.p>
             )}
 
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer"
+            <NoiseBackground
+              containerClassName="w-full rounded-xl"
+              gradientColors={["rgb(94, 106, 210)", "rgb(124, 133, 224)", "rgb(245, 165, 36)"]}
             >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Logging in...
-                </span>
-              ) : (
-                "Log In"
-              )}
-            </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                type="submit"
+                disabled={loading}
+                className="w-full cursor-pointer rounded-xl bg-gradient-to-r from-neutral-100 via-neutral-100 to-white px-4 py-2.5 text-sm font-medium text-black shadow-[0px_2px_0px_0px_var(--color-neutral-50)_inset,0px_0.5px_1px_0px_var(--color-neutral-400)] transition-all duration-100 active:scale-[0.98] disabled:opacity-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 dark:text-white dark:shadow-[0px_1px_0px_0px_var(--color-neutral-950)_inset,0px_1px_0px_0px_var(--color-neutral-800)]"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Logging in...
+                  </span>
+                ) : (
+                  "Log In →"
+                )}
+              </motion.button>
+            </NoiseBackground>
           </form>
 
           <div className="mt-6">

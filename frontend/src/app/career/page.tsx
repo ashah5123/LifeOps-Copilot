@@ -6,7 +6,6 @@ import {
   PlusIcon,
   SparklesIcon,
   ArrowTopRightOnSquareIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import AppShell from "@/components/layout/AppShell";
 import Card from "@/components/ui/Card";

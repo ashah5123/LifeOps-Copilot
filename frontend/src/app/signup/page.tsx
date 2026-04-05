@@ -6,8 +6,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SparklesIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { useAppStore, US_STATES } from "@/lib/store";
+import NoiseBackground from "@/components/ui/NoiseBackground";
+import TypingPlaceholderInput from "@/components/ui/TypingPlaceholderInput";
 
 const inputClass = "w-full px-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all";
+
+const NAME_PLACEHOLDERS = ["Nishit Patel", "Alex Rivera", "Samira Chen", "Jordan Lee"];
+const EMAIL_PLACEHOLDERS = ["nishit@university.edu", "alex@asu.edu", "hello@lifeops.app", "you@university.edu"];
 
 export default function SignupPage() {
   const [name, setName] = useState("");
@@ -46,6 +51,14 @@ export default function SignupPage() {
     setLoading(true);
     await new Promise((r) => setTimeout(r, 1500));
     setLoading(false);
+    const trimmed = name.trim();
+    const first = trimmed.split(/\s+/)[0] || trimmed;
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(
+        `lifeops-profile-${email.toLowerCase()}`,
+        JSON.stringify({ name: trimmed, firstName: first })
+      );
+    }
     addToast({ message: "Account created! Please log in.", type: "success" });
     router.push("/login");
   };
@@ -95,12 +108,28 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1.5">Full Name</label>
-              <input type="text" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Nishit Patel" className={inputClass} />
+              <TypingPlaceholderInput
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholders={NAME_PLACEHOLDERS}
+                className={inputClass}
+                autoComplete="name"
+              />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1.5">Email</label>
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nishit@university.edu" className={inputClass} />
+              <TypingPlaceholderInput
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholders={EMAIL_PLACEHOLDERS}
+                className={inputClass}
+                autoComplete="email"
+              />
             </div>
 
             {/* Location + State */}
@@ -161,18 +190,30 @@ export default function SignupPage() {
               </motion.p>
             )}
 
-            <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} type="submit" disabled={loading}
-              className="w-full py-2.5 bg-primary hover:bg-primary-hover text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer">
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Creating account...
-                </span>
-              ) : "Create Account"}
-            </motion.button>
+            <NoiseBackground
+              containerClassName="w-full rounded-xl"
+              gradientColors={["rgb(94, 106, 210)", "rgb(124, 133, 224)", "rgb(245, 165, 36)"]}
+            >
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                type="submit"
+                disabled={loading}
+                className="w-full cursor-pointer rounded-xl bg-gradient-to-r from-neutral-100 via-neutral-100 to-white px-4 py-2.5 text-sm font-medium text-black shadow-[0px_2px_0px_0px_var(--color-neutral-50)_inset,0px_0.5px_1px_0px_var(--color-neutral-400)] transition-all duration-100 active:scale-[0.98] disabled:opacity-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 dark:text-white dark:shadow-[0px_1px_0px_0px_var(--color-neutral-950)_inset,0px_1px_0px_0px_var(--color-neutral-800)]"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Creating account...
+                  </span>
+                ) : (
+                  "Create Account →"
+                )}
+              </motion.button>
+            </NoiseBackground>
           </form>
 
           <p className="text-xs text-text-secondary text-center mt-6">

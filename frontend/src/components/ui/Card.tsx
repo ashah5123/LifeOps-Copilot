@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 interface CardProps {
   children: React.ReactNode;
   className?: string;
-<<<<<<< HEAD
   padding?: "sm" | "md" | "lg" | "none";
   hover?: boolean;
   glow?: boolean;
@@ -25,7 +24,7 @@ export default function Card({
   if (hover) {
     return (
       <motion.div
-        whileHover={{ y: -4, scale: 1.025 }}
+        whileHover={{ y: -3, scale: 1.012 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
         className={`${base} ${hoverStyles} ${glowStyles} hover:border-primary/30 hover:shadow-xl hover:shadow-primary/10 ${className}`}
         onClick={onClick}
@@ -41,39 +40,3 @@ export default function Card({
     </div>
   );
 }
-=======
-  hover?: boolean;
-  padding?: "sm" | "md" | "lg";
-  onClick?: () => void;
-}
-
-const paddingStyles = {
-  sm: "p-4",
-  md: "p-6",
-  lg: "p-8",
-};
-
-export default function Card({
-  children,
-  className = "",
-  hover = false,
-  padding = "md",
-  onClick,
-}: CardProps) {
-  return (
-    <motion.div
-      whileHover={hover ? { y: -4, boxShadow: "0 12px 24px rgba(0,0,0,0.08)" } : undefined}
-      transition={{ duration: 0.2 }}
-      onClick={onClick}
-      className={`
-        bg-surface rounded-2xl shadow-sm border border-border/50
-        ${paddingStyles[padding]}
-        ${onClick ? "cursor-pointer" : ""}
-        ${className}
-      `}
-    >
-      {children}
-    </motion.div>
-  );
-}
->>>>>>> 7a240aea4d846856099e35e71a9d933d3f616372

@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MagnifyingGlassIcon,
   BellIcon,
   SunIcon,
   MoonIcon,
@@ -18,6 +17,8 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAppStore } from "@/lib/store";
 import { useRouter } from "next/navigation";
+import GooeyInput from "@/components/ui/GooeyInput";
+import PlaceholdersAndVanishInput from "@/components/ui/PlaceholdersAndVanishInput";
 
 const notifications = [
   { id: "1", text: "Prof. Martinez replied to your email", time: "30m ago", unread: true },
@@ -37,7 +38,7 @@ const searchablePages = [
 ];
 
 export default function Topbar() {
-  const { theme, toggleTheme, user, logout, addToast } = useAppStore();
+  const { theme, toggleTheme, user, logout } = useAppStore();
   const router = useRouter();
 
   const [showNotifications, setShowNotifications] = useState(false);
@@ -107,22 +108,32 @@ export default function Topbar() {
   return (
     <>
       <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur-lg border-b border-border/50">
-        <div className="flex items-center justify-between px-6 py-3">
-          {/* Search */}
-          <div ref={searchRef} className="flex items-center gap-3 flex-1 max-w-md relative">
-            <div className="relative flex-1">
-              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
-              <input
+        <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-6">
+          {/* Search — gooey frame + vanishing placeholders (LifeOps brand lives in sidebar) */}
+          <div ref={searchRef} className="relative flex min-w-0 flex-1 max-w-md items-center">
+            <GooeyInput className="w-full">
+              <PlaceholdersAndVanishInput
                 id="sparkup-search"
-                type="text"
+                placeholders={[
+                  "Search inbox, deadlines, and syllabus emails…",
+                  "Jump to career or job board…",
+                  "Find calendar blocks and study sessions…",
+                  "Open budget categories and alerts…",
+                  "Search tasks and LifeOps pages (Ctrl+K)…",
+                ]}
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); }}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowSearch(true);
+                }}
                 onFocus={() => setShowSearch(true)}
-                placeholder="Search anything... (Ctrl+K)"
-                suppressHydrationWarning
-                className="w-full pl-10 pr-4 py-2 bg-background rounded-xl text-sm text-text-primary placeholder:text-text-secondary/60 border border-border/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const first = searchResults[0];
+                  if (first) handleSearchSelect(first.href);
+                }}
               />
-            </div>
+            </GooeyInput>
 
             {/* Search Suggestions Dropdown */}
             <AnimatePresence>

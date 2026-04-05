@@ -10,15 +10,15 @@ import {
   BanknotesIcon,
   ArrowRightIcon,
   SparklesIcon,
-  EnvelopeIcon,
-  ClockIcon,
-  CheckCircleIcon,
-  CurrencyDollarIcon,
 } from "@heroicons/react/24/outline";
 import AppShell from "@/components/layout/AppShell";
 import Card from "@/components/ui/Card";
 import UploadBox from "@/components/upload/UploadBox";
 import TodayFeed from "@/components/feed/TodayFeed";
+import MovingBorderCard from "@/components/ui/MovingBorderCard";
+import AppleCardsCarousel from "@/components/ui/AppleCardsCarousel";
+import type { AppleCarouselCardData } from "@/components/ui/AppleCardsCarousel";
+import TypewriterGreeting from "@/components/ui/TypewriterGreeting";
 import { useAppStore } from "@/lib/store";
 import { mockDashboardSummary, mockFeedItems } from "@/lib/mock-data";
 
@@ -152,7 +152,7 @@ function LiveBudgetScene() {
 
 function InboxMiniScene() {
   return (
-    <div className="relative w-full h-20 overflow-hidden rounded-lg mb-3">
+    <div className="relative mb-2 h-14 w-full overflow-hidden rounded-lg">
       <div className="absolute inset-0 bg-gradient-to-br from-blue-500/8 to-indigo-500/4" />
       <div className="absolute inset-0 flex items-center justify-center gap-1.5">
         {[0, 1, 2].map((i) => (
@@ -169,7 +169,7 @@ function InboxMiniScene() {
 
 function CareerMiniScene() {
   return (
-    <div className="relative w-full h-20 overflow-hidden rounded-lg mb-3">
+    <div className="relative mb-2 h-14 w-full overflow-hidden rounded-lg">
       <div className="absolute inset-0 bg-gradient-to-br from-violet-500/8 to-purple-500/4" />
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="flex flex-col gap-1">
@@ -190,7 +190,7 @@ function CareerMiniScene() {
 
 function CalendarMiniScene() {
   return (
-    <div className="relative w-full h-20 overflow-hidden rounded-lg mb-3">
+    <div className="relative mb-2 h-14 w-full overflow-hidden rounded-lg">
       <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/8 to-green-500/4" />
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="grid grid-cols-5 gap-1">
@@ -208,7 +208,7 @@ function CalendarMiniScene() {
 
 function BudgetMiniScene() {
   return (
-    <div className="relative w-full h-20 overflow-hidden rounded-lg mb-3">
+    <div className="relative mb-2 h-14 w-full overflow-hidden rounded-lg">
       <div className="absolute inset-0 bg-gradient-to-br from-amber-500/8 to-orange-500/4" />
       <div className="absolute inset-0 flex items-center justify-center">
         <svg width="60" height="40" viewBox="0 0 60 40" fill="none">
@@ -240,14 +240,22 @@ const heroCards = [
 ];
 
 const smartCards = [
-  { title: "Inbox", insight: mockDashboardSummary.inboxInsight, count: mockDashboardSummary.emailsNeedingReply,
-    icon: InboxIcon, href: "/inbox", gradient: "from-blue-500 to-indigo-600", glow: "shadow-blue-500/20", miniScene: InboxMiniScene },
-  { title: "Career", insight: mockDashboardSummary.careerInsight, count: 3,
-    icon: BriefcaseIcon, href: "/career", gradient: "from-violet-500 to-purple-600", glow: "shadow-violet-500/20", miniScene: CareerMiniScene },
-  { title: "Calendar", insight: mockDashboardSummary.calendarInsight, count: 4,
-    icon: CalendarDaysIcon, href: "/calendar", gradient: "from-emerald-500 to-green-600", glow: "shadow-emerald-500/20", miniScene: CalendarMiniScene },
-  { title: "Budget", insight: mockDashboardSummary.budgetInsight, count: mockDashboardSummary.budgetAlerts,
-    icon: BanknotesIcon, href: "/budget", gradient: "from-amber-500 to-orange-600", glow: "shadow-amber-500/20", miniScene: BudgetMiniScene },
+  {
+    title: "Inbox", insight: mockDashboardSummary.inboxInsight, count: mockDashboardSummary.emailsNeedingReply,
+    icon: InboxIcon, href: "/inbox", gradient: "from-blue-500 to-indigo-600", glow: "shadow-blue-500/20", miniScene: InboxMiniScene
+  },
+  {
+    title: "Career", insight: mockDashboardSummary.careerInsight, count: 3,
+    icon: BriefcaseIcon, href: "/career", gradient: "from-violet-500 to-purple-600", glow: "shadow-violet-500/20", miniScene: CareerMiniScene
+  },
+  {
+    title: "Calendar", insight: mockDashboardSummary.calendarInsight, count: 4,
+    icon: CalendarDaysIcon, href: "/calendar", gradient: "from-emerald-500 to-green-600", glow: "shadow-emerald-500/20", miniScene: CalendarMiniScene
+  },
+  {
+    title: "Budget", insight: mockDashboardSummary.budgetInsight, count: mockDashboardSummary.budgetAlerts,
+    icon: BanknotesIcon, href: "/budget", gradient: "from-amber-500 to-orange-600", glow: "shadow-amber-500/20", miniScene: BudgetMiniScene
+  },
 ];
 
 const allQuotes = [
@@ -284,8 +292,13 @@ const allQuotes = [
 ];
 
 const tagColors: Record<string, string> = {
-  productivity: "text-blue-400", motivation: "text-violet-400", career: "text-emerald-400",
-  education: "text-amber-400", life: "text-rose-400", dreams: "text-indigo-400", budget: "text-orange-400",
+  productivity: "text-blue-700 dark:text-blue-400",
+  motivation: "text-violet-700 dark:text-violet-400",
+  career: "text-emerald-700 dark:text-emerald-400",
+  education: "text-amber-800 dark:text-amber-400",
+  life: "text-rose-700 dark:text-rose-400",
+  dreams: "text-indigo-700 dark:text-indigo-400",
+  budget: "text-orange-700 dark:text-orange-400",
 };
 
 const container = {
@@ -298,107 +311,200 @@ const item = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
 };
 
-<<<<<<< HEAD
+const lifeOpsCards: AppleCarouselCardData[] = [
+  {
+    category: "Budget",
+    title: "Know where every dollar goes",
+    description: "Smart categories, alerts, and weekly rollups tuned for student life.",
+    content: (
+      <div className="space-y-6">
+        <p>
+          <strong className="text-text-primary">Build clarity, not spreadsheets.</strong> LifeOps groups dining, subscriptions, and campus spending so you see trends before they become surprises.
+        </p>
+        <p>
+          Set soft limits per category, get nudges when you drift from your plan, and see projected balances through the end of the month — especially around tuition, rent, and books.
+        </p>
+        <p>
+          Weekly rollups explain what moved and why, in plain language, so you can adjust in minutes instead of reconciling for hours.
+        </p>
+      </div>
+    ),
+  },
+  {
+    category: "Job board",
+    title: "Career pipeline in one place",
+    description: "Roles, deadlines, and AI nudges so you never miss a screen.",
+    content: (
+      <div className="space-y-6">
+        <p>
+          <strong className="text-text-primary">One pipeline for every application.</strong> Track company, role, stage, and next action in a single view designed for recruiting season.
+        </p>
+        <p>
+          Deadlines surface next to your calendar so prep blocks and submissions do not collide with exams or project due dates.
+        </p>
+        <p>
+          Gentle nudges remind you to follow up after screens and to refresh materials when a role stalls — without the noise of a generic job board.
+        </p>
+      </div>
+    ),
+  },
+  {
+    category: "Calendar",
+    title: "Time blocks that respect real life",
+    description: "Week view, AI slots, and quick-add from the grid.",
+    content: (
+      <div className="space-y-6">
+        <p>
+          <strong className="text-text-primary">Your week, grounded in reality.</strong> See classes, study blocks, and interviews together so you never double-book deep work with office hours again.
+        </p>
+        <p>
+          Quick-add from any cell puts events where they belong; suggested slots respect travel, meals, and the focus time you still need before big deadlines.
+        </p>
+        <p>
+          When conflicts appear, LifeOps highlights them immediately so you fix the plan before the day unravels.
+        </p>
+      </div>
+    ),
+  },
+  {
+    category: "Inbox",
+    title: "Inbox zero without the anxiety",
+    description: "Triage, drafts, and professor-ready tone in seconds.",
+    content: (
+      <div className="space-y-6">
+        <p>
+          <strong className="text-text-primary">Triage that respects your voice.</strong> Threads are summarized with next steps so you know what matters before you open a novel-length chain.
+        </p>
+        <p>
+          Draft replies match a professional, professor-ready tone — editable in one pass — so you answer faster without sounding rushed.
+        </p>
+        <p>
+          Labels and follow-up suggestions keep financial aid, career, and course emails separated without maintaining a maze of filters.
+        </p>
+      </div>
+    ),
+  },
+  {
+    category: "AI",
+    title: "Assistant that knows your context",
+    description: "Grounded in your tasks, mail, and schedule — not generic tips.",
+    content: (
+      <div className="space-y-6">
+        <p>
+          <strong className="text-text-primary">Context from your actual life.</strong> The assistant reads across inbox, calendar, and tasks so answers reference what is on your plate this week — not boilerplate advice.
+        </p>
+        <p>
+          Ask for a prep brief before a call, a rewrite that fits academic tone, or a prioritized list for tonight — each answer stays short and actionable.
+        </p>
+        <p>
+          When plans shift, LifeOps reframes suggestions automatically so you are never working from yesterday&apos;s stale checklist.
+        </p>
+      </div>
+    ),
+  },
+];
+
 function getMSTGreeting(): string {
   const utc = new Date();
   const mstHour = new Date(utc.toLocaleString("en-US", { timeZone: "America/Phoenix" })).getHours();
   if (mstHour < 12) return "Good morning";
   if (mstHour < 17) return "Good afternoon";
-=======
-function getTimeBasedGreeting() {
-  const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return "Good morning";
-  if (hour >= 12 && hour < 18) return "Good afternoon";
->>>>>>> 7a240aea4d846856099e35e71a9d933d3f616372
   return "Good evening";
 }
 
 export default function DashboardPage() {
   const user = useAppStore((s) => s.user);
-  const displayName = user?.name || "there";
-<<<<<<< HEAD
-  const [greeting, setGreeting] = useState("Hello");
-  const [quoteIndex, setQuoteIndex] = useState(0);
+  const firstName =
+    user?.firstName?.trim() ||
+    user?.name?.trim().split(/\s+/)[0] ||
+    "there";
+  const [greeting] = useState(() => getMSTGreeting());
+  const [quoteIndex, setQuoteIndex] = useState(() => Math.floor(Math.random() * allQuotes.length));
 
-  useEffect(() => {
-    setGreeting(getMSTGreeting());
-    // Start from a random quote
-    setQuoteIndex(Math.floor(Math.random() * allQuotes.length));
-  }, []);
-
-  // Rotate quotes every 15 seconds
+  // Rotate quotes every 20 seconds (blur / flip style)
   useEffect(() => {
     const interval = setInterval(() => {
       setQuoteIndex((prev) => (prev + 1) % allQuotes.length);
-    }, 15000);
+    }, 20000);
     return () => clearInterval(interval);
   }, []);
 
   const currentQuote = allQuotes[quoteIndex];
-=======
-  const greeting = getTimeBasedGreeting();
->>>>>>> 7a240aea4d846856099e35e71a9d933d3f616372
 
   return (
     <AppShell>
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Header */}
-<<<<<<< HEAD
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-          <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight">
-=======
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-text-primary">
->>>>>>> 7a240aea4d846856099e35e71a9d933d3f616372
-            {greeting}, {displayName}
+          <h1 className="max-w-4xl text-2xl font-bold tracking-tight md:text-4xl">
+            <TypewriterGreeting
+              text={`${greeting}, ${firstName}`}
+              className="inline-block bg-gradient-to-r from-amber-500 via-sky-500 to-violet-500 bg-clip-text text-transparent animate-shimmer-text bg-[length:220%_auto]"
+            />
           </h1>
-          <p className="text-sm text-text-secondary mt-1">
+          <p className="mt-2 text-sm text-text-secondary">
             Here&apos;s what needs your attention today
           </p>
         </motion.div>
 
-        {/* Rotating Quote Card */}
-        <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-r from-primary/5 via-surface to-primary/5 px-6 py-5">
-          <div className="absolute top-3 left-4 text-primary/20">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/>
-            </svg>
+        {/* Rotating Quote Card — Moving Border */}
+        <MovingBorderCard duration={8} borderRadius="1.75rem" className="w-full">
+          <div className="relative px-6 py-5">
+            <div className="absolute top-3 left-4 text-indigo-600/90 dark:text-primary/35">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
+              </svg>
+            </div>
+            <div className="ml-8 min-h-[52px]">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={quoteIndex}
+                  initial={{ opacity: 0, rotateX: -18, filter: "blur(10px)", y: 8 }}
+                  animate={{ opacity: 1, rotateX: 0, filter: "blur(0px)", y: 0 }}
+                  exit={{ opacity: 0, rotateX: 16, filter: "blur(10px)", y: -8 }}
+                  transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ transformPerspective: 800 }}
+                >
+                  <p className="text-sm font-medium italic leading-relaxed text-zinc-900 md:text-base dark:text-text-primary">
+                    &ldquo;{currentQuote.text}&rdquo;
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <p className="text-xs font-medium text-zinc-600 dark:text-text-secondary">— {currentQuote.author}</p>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wider ${tagColors[currentQuote.tag] || "text-zinc-600 dark:text-text-secondary"}`}>
+                      #{currentQuote.tag}
+                    </span>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+            <div className="absolute bottom-3 right-4 rotate-180 text-indigo-600/80 dark:text-primary/25">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
+              </svg>
+            </div>
+            {/* Progress bar showing time to next quote */}
+            <motion.div
+              key={`bar-${quoteIndex}`}
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 20, ease: "linear" }}
+              className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary/35 origin-left"
+            />
           </div>
-          <div className="ml-8 min-h-[52px]">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={quoteIndex}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.5 }}
-              >
-                <p className="text-sm md:text-base text-text-primary italic font-medium leading-relaxed">
-                  &ldquo;{currentQuote.text}&rdquo;
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <p className="text-xs text-text-secondary font-medium">— {currentQuote.author}</p>
-                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${tagColors[currentQuote.tag] || "text-text-secondary"}`}>
-                    #{currentQuote.tag}
-                  </span>
-                </div>
-              </motion.div>
-            </AnimatePresence>
+        </MovingBorderCard>
+
+        {/* LifeOps feature grid */}
+        <section className="rounded-2xl border border-border/80 bg-surface/60 p-5 shadow-sm backdrop-blur-sm md:p-8">
+          <div className="mb-6 md:mb-8">
+            <h2 className="text-xl font-bold tracking-tight text-text-primary md:text-2xl">
+              Get to know what is LifeOps
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-secondary md:text-base">
+              A Linear-inspired command center for student life — tap a card to explore each pillar.
+            </p>
           </div>
-          <div className="absolute bottom-3 right-4 text-primary/10 rotate-180">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/>
-            </svg>
-          </div>
-          {/* Progress bar showing time to next quote */}
-          <motion.div
-            key={`bar-${quoteIndex}`}
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: 1 }}
-            transition={{ duration: 15, ease: "linear" }}
-            className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary/30 origin-left"
-          />
-        </div>
+          <AppleCardsCarousel cards={lifeOpsCards} />
+        </section>
 
         {/* Hero Stat Cards */}
         <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
@@ -428,28 +534,32 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <h2 className="text-lg font-semibold text-text-primary mb-4 tracking-tight">Quick Access</h2>
-            <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <motion.div
+              variants={container}
+              initial="hidden"
+              animate="show"
+              className="grid origin-top scale-[0.94] grid-cols-1 gap-3 sm:grid-cols-2 sm:scale-[0.96] sm:gap-3.5"
+            >
               {smartCards.map((card) => {
                 const MiniScene = card.miniScene;
                 return (
                   <motion.div key={card.title} variants={item}>
-                    <Link href={card.href}>
-                      <Card hover padding="md" glow className="group">
-                        {/* Mini Live Scene */}
+                    <Link href={card.href} className="block">
+                      <Card hover padding="sm" className="group">
                         <MiniScene />
 
-                        <div className="flex items-start justify-between mb-2">
-                          <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${card.gradient} flex items-center justify-center shadow-lg ${card.glow}`}>
-                            <card.icon className="w-4 h-4 text-white" />
+                        <div className="mb-1.5 flex items-start justify-between">
+                          <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${card.gradient} shadow-md ${card.glow}`}>
+                            <card.icon className="h-3.5 w-3.5 text-white" />
                           </div>
-                          <span className="text-xs font-medium text-text-secondary bg-surface-hover px-2.5 py-1 rounded-full border border-border">
+                          <span className="rounded-full border border-border bg-surface-hover px-2 py-0.5 text-[10px] font-medium text-text-secondary">
                             {card.count} items
                           </span>
                         </div>
-                        <h3 className="text-base font-semibold text-text-primary mb-1">{card.title}</h3>
-                        <p className="text-xs text-text-secondary line-clamp-2 mb-3 leading-relaxed">{card.insight}</p>
-                        <div className="flex items-center gap-1 text-xs font-medium text-primary group-hover:gap-2 transition-all">
-                          Open <ArrowRightIcon className="w-3 h-3" />
+                        <h3 className="mb-0.5 text-sm font-semibold text-text-primary">{card.title}</h3>
+                        <p className="mb-2 line-clamp-2 text-[11px] leading-relaxed text-text-secondary">{card.insight}</p>
+                        <div className="flex items-center gap-1 text-[11px] font-medium text-primary transition-all group-hover:gap-1.5">
+                          Open <ArrowRightIcon className="h-3 w-3" />
                         </div>
                       </Card>
                     </Link>

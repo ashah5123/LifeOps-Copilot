@@ -1,45 +1,12 @@
 "use client";
 
 import { create } from "zustand";
-<<<<<<< HEAD
-=======
-import { persist } from "zustand/middleware";
-
-interface AppState {
-  sidebarOpen: boolean;
-  toggleSidebar: () => void;
-  setSidebarOpen: (open: boolean) => void;
-
-  gmailConnected: boolean;
-  setGmailConnected: (connected: boolean) => void;
-
-  isAuthenticated: boolean;
-  user: UserProfile | null;
-  login: (user: UserProfile) => void;
-  logout: () => void;
-
-  toasts: Toast[];
-  addToast: (toast: Omit<Toast, "id">) => void;
-  removeToast: (id: string) => void;
-
-  theme: "light" | "dark";
-  toggleTheme: () => void;
-
-  _isHydrated: boolean;
-  _setHydrated: (value: boolean) => void;
-}
-
-export interface UserProfile {
-  name: string;
-  email: string;
-  initials: string;
-}
->>>>>>> 7a240aea4d846856099e35e71a9d933d3f616372
+import type { CalendarEvent } from "@/types";
+import { mockCalendarEvents } from "@/lib/mock-data";
 
 export interface Toast {
   id: string;
   message: string;
-<<<<<<< HEAD
   type: "success" | "error" | "warning" | "info";
 }
 
@@ -47,6 +14,8 @@ interface User {
   name: string;
   email: string;
   initials: string;
+  /** First name for greetings (from signup or derived from name). */
+  firstName?: string;
   location?: string;
   state?: string;
   timezone?: string;
@@ -63,9 +32,14 @@ interface AppState {
   initAuth: () => void;
   gmailConnected: boolean;
   setGmailConnected: (v: boolean) => void;
+  _isHydrated: boolean;
   toasts: Toast[];
   addToast: (toast: Omit<Toast, "id">) => void;
   removeToast: (id: string) => void;
+  calendarEvents: CalendarEvent[];
+  calendarHydrated: boolean;
+  initCalendarEvents: () => void;
+  addCalendarEvent: (event: CalendarEvent) => void;
 }
 
 function applyThemeClass(theme: "light" | "dark") {
@@ -125,7 +99,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       }
     }
+    set({ _isHydrated: true });
   },
+  _isHydrated: false,
   gmailConnected: false,
   setGmailConnected: (v) => set({ gmailConnected: v }),
   toasts: [],
@@ -135,6 +111,39 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   removeToast: (id) => {
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+  },
+  calendarEvents: [],
+  calendarHydrated: false,
+  initCalendarEvents: () => {
+    if (get().calendarHydrated) return;
+    if (typeof localStorage !== "undefined") {
+      const raw = localStorage.getItem("lifeops-calendar-events");
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as CalendarEvent[];
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            set({ calendarEvents: parsed, calendarHydrated: true });
+            return;
+          }
+        } catch {
+          /* use defaults */
+        }
+      }
+    }
+    const seed = mockCalendarEvents.map((e) => ({ ...e }));
+    set({ calendarEvents: seed, calendarHydrated: true });
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("lifeops-calendar-events", JSON.stringify(seed));
+    }
+  },
+  addCalendarEvent: (event) => {
+    set((s) => {
+      const next = [...s.calendarEvents, event];
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("lifeops-calendar-events", JSON.stringify(next));
+      }
+      return { calendarEvents: next };
+    });
   },
 }));
 
@@ -194,61 +203,3 @@ export const US_STATES = [
   { value: "WY", label: "Wyoming", tz: "America/Denver" },
   { value: "DC", label: "Washington D.C.", tz: "America/New_York" },
 ];
-=======
-  type: "success" | "error" | "info" | "warning";
-}
-
-export const useAppStore = create<AppState>()(
-  persist(
-    (set) => ({
-      sidebarOpen: true,
-      toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-      setSidebarOpen: (open) => set({ sidebarOpen: open }),
-
-      gmailConnected: false,
-      setGmailConnected: (connected) => set({ gmailConnected: connected }),
-
-      isAuthenticated: false,
-      user: null,
-      login: (user) => set({ isAuthenticated: true, user }),
-      logout: () => set({ isAuthenticated: false, user: null, gmailConnected: false }),
-
-      toasts: [],
-      addToast: (toast) =>
-        set((s) => ({
-          toasts: [...s.toasts, { ...toast, id: crypto.randomUUID() }],
-        })),
-      removeToast: (id) =>
-        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
-
-      theme: "light",
-      toggleTheme: () =>
-        set((s) => {
-          const newTheme = s.theme === "light" ? "dark" : "light";
-          if (typeof document !== "undefined") {
-            document.documentElement.classList.toggle("dark", newTheme === "dark");
-          }
-          return { theme: newTheme };
-        }),
-
-      _isHydrated: false,
-      _setHydrated: (value) => set({ _isHydrated: value }),
-    }),
-    {
-      name: "app-store",
-      partialize: (state) => ({
-        isAuthenticated: state.isAuthenticated,
-        user: state.user,
-        gmailConnected: state.gmailConnected,
-        theme: state.theme,
-        sidebarOpen: state.sidebarOpen,
-      }),
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          state._setHydrated(true);
-        }
-      },
-    }
-  )
-);
->>>>>>> 7a240aea4d846856099e35e71a9d933d3f616372

@@ -1,4 +1,10 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve backend/.env regardless of where uvicorn was started (repo root vs backend/).
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENV_PATH = _BACKEND_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -33,7 +39,11 @@ class Settings(BaseSettings):
         """True when real OAuth client credentials are set."""
         return self.google_client_id not in ("demo-client-id", "")
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_PATH),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = Settings()

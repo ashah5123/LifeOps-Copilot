@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo, ChangeEvent } from "react";
+import { useState, useRef, useMemo, useEffect, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   PlusIcon,
@@ -24,9 +24,33 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import { useAppStore } from "@/lib/store";
-import { searchJobs as searchJobsApi } from "@/lib/api";
+import { searchJobs as searchJobsApi, listApplications, createApplication } from "@/lib/api";
 import { mockApplications, mockCareerSuggestions } from "@/lib/mock-data";
 import type { Application } from "@/types";
+
+function mapApiApplication(row: Record<string, unknown>): Application {
+  const statusRaw = String(row.status ?? "applied").toLowerCase();
+  const statusMap: Record<string, Application["status"]> = {
+    applied: "applied",
+    interviewing: "interview",
+    interview: "interview",
+    screening: "interview",
+    offer: "offer",
+    rejected: "rejected",
+    saved: "applied",
+    accepted: "offer",
+  };
+  const status = statusMap[statusRaw] ?? "applied";
+  return {
+    id: String(row.id),
+    company: String(row.company ?? ""),
+    role: String(row.role ?? ""),
+    status,
+    appliedDate: String(row.applied_date ?? "").slice(0, 10) || "—",
+    notes: row.notes ? String(row.notes) : undefined,
+    url: row.job_url ? String(row.job_url) : undefined,
+  };
+}
 
 /* ── Types ──────────────────────────────────────────────────── */
 
@@ -736,8 +760,26 @@ const item = {
 /* ── Component ──────────────────────────────────────────────── */
 
 export default function CareerPage() {
+  const [applications, setApplications] = useState<Application[]>(mockApplications);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [newAppCompany, setNewAppCompany] = useState("");
+  const [newAppRole, setNewAppRole] = useState("");
+  const [newAppStatus, setNewAppStatus] = useState<Application["status"]>("applied");
+  const [newAppDeadline, setNewAppDeadline] = useState("");
+  const [newAppNotes, setNewAppNotes] = useState("");
   const [filter, setFilter] = useState<Application["status"] | "all">("all");
+
+  useEffect(() => {
+    listApplications()
+      .then((rows) => {
+        if (rows.length) {
+          setApplications(rows.map((r) => mapApiApplication(r as Record<string, unknown>)));
+        }
+      })
+      .catch(() => {
+        /* keep mock */
+      });
+  }, []);
 
   // Job search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -767,15 +809,15 @@ export default function CareerPage() {
 
   const filteredApps =
     filter === "all"
-      ? mockApplications
-      : mockApplications.filter((a) => a.status === filter);
+      ? applications
+      : applications.filter((a) => a.status === filter);
 
   const statusCounts = {
-    all: mockApplications.length,
-    applied: mockApplications.filter((a) => a.status === "applied").length,
-    interview: mockApplications.filter((a) => a.status === "interview").length,
-    offer: mockApplications.filter((a) => a.status === "offer").length,
-    rejected: mockApplications.filter((a) => a.status === "rejected").length,
+    all: applications.length,
+    applied: applications.filter((a) => a.status === "applied").length,
+    interview: applications.filter((a) => a.status === "interview").length,
+    offer: applications.filter((a) => a.status === "offer").length,
+    rejected: applications.filter((a) => a.status === "rejected").length,
   };
 
   /* ── Handlers ─────────────────────────────────────── */
@@ -790,20 +832,35 @@ export default function CareerPage() {
       const results = await searchJobsApi(searchQuery);
       // Map backend response to JobResult shape
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped: JobResult[] = results.map((j: any, idx: number) => ({
-        id: j.id || `job-${idx}`,
-        company: j.company || "Unknown",
-        role: j.title || "Unknown Role",
-        location: j.location || "Remote",
-        salaryRange: j.salary || "Not disclosed",
-        posted: j.postedDate || new Date().toISOString().slice(0, 10),
-        match: 70 + Math.floor(Math.random() * 25),
-        source: j.source || pickSource(idx),
-        description: j.description || "",
-        requirements: j.tags?.length ? j.tags : ["See job posting for details"],
-        qualifications: ["Bachelor's degree or equivalent experience"],
-        companyInfo: `${j.company} — ${j.category || "Technology"}`,
-      }));
+      const mapped: JobResult[] = results.map((j: Record<string, unknown>, idx: number) => {
+        const smin = j.salary_min as number | null | undefined;
+        const smax = j.salary_max as number | null | undefined;
+        const scur = (j.salary_currency as string) || "USD";
+        let salaryRange = "Not disclosed";
+        if (smin != null || smax != null) {
+          salaryRange = `${smin ?? "?"}–${smax ?? "?"} ${scur}`.trim();
+        } else if (typeof j.salary === "string") {
+          salaryRange = j.salary;
+        }
+        const skills = (j.skills_required as string[]) || [];
+        const posted =
+          String(j.posted_date || j.postedDate || j.job_posted_at_datetime_utc || "").slice(0, 10) ||
+          new Date().toISOString().slice(0, 10);
+        return {
+          id: String(j.id || `job-${idx}`),
+          company: String(j.company || j.employer_name || "Unknown"),
+          role: String(j.title || j.job_title || "Unknown Role"),
+          location: String(j.location || j.job_city || "Remote"),
+          salaryRange,
+          posted,
+          match: typeof j.match_score === "number" ? j.match_score : 70 + Math.floor(Math.random() * 25),
+          source: (j.source as JobResult["source"]) || pickSource(idx),
+          description: String(j.description || j.job_description || ""),
+          requirements: skills.length ? skills : ["See job posting for details"],
+          qualifications: ["Bachelor's degree or equivalent experience"],
+          companyInfo: `${String(j.company || "")} — ${String(j.job_type || "Technology")}`,
+        };
+      });
       setJobResults(mapped.length > 0 ? mapped : getJobsForQuery(searchQuery));
     } catch {
       // Fallback to local mock data if backend is down
@@ -908,7 +965,7 @@ export default function CareerPage() {
               Career Tracker
             </h1>
             <p className="text-sm text-text-secondary mt-0.5">
-              {mockApplications.length} applications tracked
+              {applications.length} applications tracked
             </p>
           </div>
           <Button
@@ -1335,8 +1392,39 @@ export default function CareerPage() {
           title="Add Application"
         >
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
+              const local: Application = {
+                id: crypto.randomUUID(),
+                company: newAppCompany,
+                role: newAppRole,
+                status: newAppStatus,
+                appliedDate: new Date().toISOString().slice(0, 10),
+                deadline: newAppDeadline || undefined,
+                notes: newAppNotes || undefined,
+              };
+              try {
+                const created = await createApplication({
+                  company: newAppCompany,
+                  role: newAppRole,
+                  status: newAppStatus,
+                  applied_date: local.appliedDate,
+                  notes: newAppNotes,
+                  job_url: "",
+                  job_description: "",
+                });
+                if (created && typeof created === "object" && "id" in created) {
+                  local.id = String((created as { id: string }).id);
+                }
+              } catch {
+                addToast({ message: "Saved locally; API sync failed", type: "warning" });
+              }
+              setApplications((prev) => [...prev, local]);
+              setNewAppCompany("");
+              setNewAppRole("");
+              setNewAppStatus("applied");
+              setNewAppDeadline("");
+              setNewAppNotes("");
               setShowAddModal(false);
               addToast({ message: "Application added!", type: "success" });
             }}
@@ -1349,6 +1437,8 @@ export default function CareerPage() {
               <input
                 type="text"
                 required
+                value={newAppCompany}
+                onChange={(e) => setNewAppCompany(e.target.value)}
                 placeholder="e.g., Google"
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
@@ -1360,6 +1450,8 @@ export default function CareerPage() {
               <input
                 type="text"
                 required
+                value={newAppRole}
+                onChange={(e) => setNewAppRole(e.target.value)}
                 placeholder="e.g., Software Engineering Intern"
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
@@ -1369,10 +1461,15 @@ export default function CareerPage() {
                 <label className="block text-xs font-medium text-text-secondary mb-1.5">
                   Status
                 </label>
-                <select className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30">
+                <select
+                  value={newAppStatus}
+                  onChange={(e) => setNewAppStatus(e.target.value as Application["status"])}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
                   <option value="applied">Applied</option>
                   <option value="interview">Interview</option>
                   <option value="offer">Offer</option>
+                  <option value="rejected">Rejected</option>
                 </select>
               </div>
               <div>
@@ -1381,6 +1478,8 @@ export default function CareerPage() {
                 </label>
                 <input
                   type="date"
+                  value={newAppDeadline}
+                  onChange={(e) => setNewAppDeadline(e.target.value)}
                   className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
@@ -1390,6 +1489,8 @@ export default function CareerPage() {
                 Notes
               </label>
               <textarea
+                value={newAppNotes}
+                onChange={(e) => setNewAppNotes(e.target.value)}
                 placeholder="Any notes about this application..."
                 rows={2}
                 className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"

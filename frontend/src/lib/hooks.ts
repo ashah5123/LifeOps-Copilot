@@ -2,13 +2,7 @@
 
 import useSWR from "swr";
 import * as api from "./api";
-import type {
-  DashboardSummary,
-  FeedItem,
-  GmailMessage,
-  BudgetSummary,
-  Approval,
-} from "@/types";
+import type { DashboardSummary, FeedItem, GmailMessage, Approval } from "@/types";
 
 // Generic fetcher wrapper for SWR
 const swrOptions = {
@@ -30,7 +24,11 @@ export function useGmailMessages() {
 }
 
 export function useBudgetSummary() {
-  return useSWR<BudgetSummary>("budget-summary", api.getBudgetSummary, swrOptions);
+  return useSWR<{
+    totalIncome: number;
+    totalSpent: number;
+    remainingBalance: number;
+  }>("budget-summary", api.getBudgetSummary, swrOptions);
 }
 
 export function usePendingApprovals() {

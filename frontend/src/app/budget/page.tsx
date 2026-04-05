@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   PlusIcon,
@@ -25,6 +25,33 @@ import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import { useAppStore, type BudgetEntry } from "@/lib/store";
 import { mockBudgetSummary, mockBudgetEntries } from "@/lib/mock-data";
+import {
+  listBudgetEntries,
+  createBudgetEntry,
+  getBudgetInsights,
+  exportBudgetCsvBlob,
+} from "@/lib/api";
+
+function apiRowToBudgetEntry(row: Record<string, unknown>): BudgetEntry | null {
+  if (row.id == null) return null;
+  const et = String(row.entry_type || "expense");
+  const type: BudgetEntry["type"] =
+    et === "gift"
+      ? "gift"
+      : et === "scholarship"
+        ? "scholarship"
+        : et === "income"
+          ? "income"
+          : "expense";
+  return {
+    id: String(row.id),
+    description: String(row.title ?? ""),
+    amount: Number(row.amount),
+    category: String(row.category ?? "Other"),
+    date: String(row.date ?? "").slice(0, 10),
+    type,
+  };
+}
 
 /* ── animation variants ──────────────────────────────── */
 const container = {
@@ -167,14 +194,62 @@ export default function BudgetPage() {
   const addBudgetEntry = useAppStore((s) => s.addBudgetEntry);
   const removeBudgetEntry = useAppStore((s) => s.removeBudgetEntry);
 
-  /* ── combined entries (mock + persisted) ────────────── */
+  const [serverEntries, setServerEntries] = useState<BudgetEntry[]>([]);
+  const [insights, setInsights] = useState<{ insights: unknown[]; recommendations: unknown[] } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await listBudgetEntries();
+        if (cancelled) return;
+        setServerEntries(
+          rows.map((r) => apiRowToBudgetEntry(r as Record<string, unknown>)).filter(Boolean) as BudgetEntry[],
+        );
+      } catch {
+        if (!cancelled) setServerEntries([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    getBudgetInsights()
+      .then(setInsights)
+      .catch(() => setInsights(null));
+  }, [serverEntries.length, budgetEntries.length]);
+
+  const refreshServerEntries = useCallback(async () => {
+    try {
+      const rows = await listBudgetEntries();
+      setServerEntries(
+        rows.map((r) => apiRowToBudgetEntry(r as Record<string, unknown>)).filter(Boolean) as BudgetEntry[],
+      );
+    } catch {
+      /* keep previous */
+    }
+  }, []);
+
+  /* ── combined entries (mock + API + persisted) — dedupe by id ────────────── */
   const allEntries = useMemo(() => {
-    const storeIds = new Set(budgetEntries.map((e) => e.id));
-    const deduped = mockBudgetEntries.filter((e) => !storeIds.has(e.id));
-    return [...deduped, ...budgetEntries].sort(
+    const byId = new Map<string, BudgetEntry>();
+    for (const e of mockBudgetEntries) {
+      if (!byId.has(e.id)) byId.set(e.id, e);
+    }
+    for (const e of serverEntries) {
+      byId.set(e.id, e);
+    }
+    for (const e of budgetEntries) {
+      if (!byId.has(e.id)) byId.set(e.id, e);
+    }
+    return Array.from(byId.values()).sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
-  }, [budgetEntries]);
+  }, [budgetEntries, serverEntries]);
 
   /* ── computed summary (dynamic from all entries) ───── */
   const summary = useMemo(() => {
@@ -280,20 +355,52 @@ export default function BudgetPage() {
     setEntryDate(new Date().toISOString().slice(0, 10));
   }
 
-  function handleAddEntry(e: React.FormEvent) {
+  async function handleAddEntry(e: React.FormEvent) {
     e.preventDefault();
+    const amount = parseFloat(entryAmount);
+    const entry_type =
+      entryType === "expense" ? "expense" : "income";
+    let id = crypto.randomUUID();
+    try {
+      const created = (await createBudgetEntry({
+        title: entryDesc,
+        amount,
+        entry_type,
+        category: entryCategory,
+        date: entryDate,
+        notes: entryType !== "expense" ? entryType : undefined,
+      })) as { id?: string };
+      if (created?.id) id = created.id;
+    } catch {
+      addToast({ message: "Saved locally; API sync failed (is the backend running?)", type: "warning" });
+    }
     const entry: BudgetEntry = {
-      id: crypto.randomUUID(),
+      id,
       description: entryDesc,
-      amount: parseFloat(entryAmount),
+      amount,
       category: entryCategory,
       date: entryDate,
       type: entryType,
     };
     addBudgetEntry(entry);
+    void refreshServerEntries();
     setShowAddModal(false);
     resetForm();
     addToast({ message: `${entryTypeLabel(entryType)} added!`, type: "success" });
+  }
+
+  async function handleExportServerCsv() {
+    const dates = allEntries.map((x) => x.date).filter(Boolean).sort();
+    if (dates.length < 2) {
+      exportCSV(allEntries);
+      return;
+    }
+    try {
+      const blob = await exportBudgetCsvBlob(dates[0], dates[dates.length - 1]);
+      downloadBlob(blob, `sparkup-budget-${dates[0]}_${dates[dates.length - 1]}.csv`);
+    } catch {
+      exportCSV(allEntries);
+    }
   }
 
   function saveBudget() {
@@ -354,7 +461,7 @@ export default function BudgetPage() {
               variant="secondary"
               size="sm"
               icon={<ArrowDownTrayIcon className="w-4 h-4" />}
-              onClick={() => exportCSV(allEntries)}
+              onClick={() => void handleExportServerCsv()}
             >
               Export CSV
             </Button>
@@ -400,6 +507,41 @@ export default function BudgetPage() {
             ))}
           </motion.div>
         )}
+
+        {insights &&
+          (insights.insights.length > 0 || insights.recommendations.length > 0) && (
+            <Card padding="md" className="mb-6">
+              <h3 className="text-sm font-semibold text-text-primary mb-3">AI budget insights</h3>
+              <div className="grid gap-4 sm:grid-cols-2 text-sm text-text-secondary">
+                {insights.insights.length > 0 && (
+                  <ul className="list-disc space-y-1 pl-4">
+                    {insights.insights.slice(0, 5).map((x, i) => (
+                      <li key={i}>
+                        {typeof x === "object" && x && "message" in x
+                          ? String((x as { message: string }).message)
+                          : typeof x === "string"
+                            ? x
+                            : JSON.stringify(x)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {insights.recommendations.length > 0 && (
+                  <ul className="list-disc space-y-1 pl-4">
+                    {insights.recommendations.slice(0, 5).map((x, i) => (
+                      <li key={i}>
+                        {typeof x === "object" && x && "message" in x
+                          ? String((x as { message: string }).message)
+                          : typeof x === "string"
+                            ? x
+                            : JSON.stringify(x)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </Card>
+          )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── LEFT COLUMN ───────────────────────────── */}

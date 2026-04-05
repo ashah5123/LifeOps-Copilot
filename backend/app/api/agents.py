@@ -3,55 +3,35 @@
 from __future__ import annotations
 
 import os
-import tempfile
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from app.agents.router_agent import RouterAgent
-from app.core.dependencies import agent_runner, firestore_service, storage_service
+from app.core.dependencies import agent_runner, document_ai_service, firestore_service, storage_service
 from app.models.agent_process import AgentProcessPayload, AgentProcessResult
-from app.services.file_processor_service import process_file
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 _TEXT_SUFFIXES = {".txt", ".md", ".csv", ".json", ".html", ".htm"}
+_BINARY_MIME = {"application/pdf", "application/x-pdf"}
 
 
-def _extract_text_from_bytes(file_name: str, content_type: str, file_content: bytes) -> str:
-    """Best-effort text extraction for PDF, images (OCR), and plain-text-like uploads."""
-    name = file_name or "upload"
-    ctype = content_type or ""
-    suffix = os.path.splitext(name)[1].lower()
-
-    if ctype == "application/pdf" or suffix == ".pdf":
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            tmp.write(file_content)
-            path = tmp.name
-        try:
-            return process_file(path, "application/pdf")
-        finally:
-            os.unlink(path)
-
-    if ctype.startswith("image/"):
-        ext = suffix if suffix else ".img"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-            tmp.write(file_content)
-            path = tmp.name
-        try:
-            return process_file(path, ctype)
-        finally:
-            os.unlink(path)
-
-    if ctype.startswith("text/") or suffix in _TEXT_SUFFIXES:
-        return file_content.decode("utf-8", errors="replace").strip()
-
-    if len(file_content) <= 2 * 1024 * 1024:
-        decoded = file_content.decode("utf-8", errors="replace").strip()
-        if decoded and "\x00" not in decoded[:2000]:
-            return decoded
-
-    return ""
+def _resolve_mime(file_name: str, content_type: str) -> str:
+    """Return the best MIME type given the file name and declared content type."""
+    suffix = os.path.splitext(file_name or "")[1].lower()
+    if content_type and content_type != "application/octet-stream":
+        return content_type
+    return {
+        ".pdf": "application/pdf",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".tiff": "image/tiff",
+        ".tif": "image/tiff",
+    }.get(suffix, content_type or "application/octet-stream")
 
 
 def _validate_domain(domain: str | None) -> str | None:
@@ -98,19 +78,32 @@ async def process_upload_through_pipeline(
         description="If true, store upload metadata (and file) like POST /api/uploads",
     ),
 ) -> dict[str, object]:
-    """Upload a file, extract text, run router → extractor → planner → review → action → memory."""
+    """Upload a file, extract text and structure, run the full agent pipeline.
+
+    Uses DocumentAIService for extraction (GCP Document AI → local PyPDF2/OCR fallback).
+    """
     file_content = await file.read()
     if not file_content:
         raise HTTPException(status_code=400, detail="Empty file")
 
     file_name = file.filename or "upload"
-    content_type = file.content_type or ""
+    mime_type = _resolve_mime(file_name, file.content_type or "")
 
-    extracted_text = _extract_text_from_bytes(file_name, content_type, file_content)
+    # Plain text files: decode directly, skip binary extraction
+    suffix = os.path.splitext(file_name)[1].lower()
+    if mime_type.startswith("text/") or suffix in _TEXT_SUFFIXES:
+        parse_result = document_ai_service.parse_document(
+            file_content.decode("utf-8", errors="replace").strip(),
+            mime_type,
+        )
+    else:
+        parse_result = document_ai_service.parse_document(file_content, mime_type)
+
+    extracted_text: str = parse_result["extractedText"]
     if not extracted_text.strip():
         raise HTTPException(
             status_code=422,
-            detail="Could not extract text from this file type. Use PDF, image, or plain text.",
+            detail="Could not extract text from this file. Use PDF, image, or plain text.",
         )
 
     forced = _validate_domain(domain)
@@ -127,13 +120,18 @@ async def process_upload_through_pipeline(
             "uploadId": upload_id,
             "fileName": file_name,
             "fileUrl": file_url,
+            "mimeType": mime_type,
             "status": "processed",
             "extractedText": extracted_text,
+            "documentType": parse_result.get("documentType"),
+            "structuredData": parse_result.get("structuredData"),
         }
         firestore_service.create("uploads", upload_meta)
 
     return {
         "upload": upload_meta,
+        "documentType": parse_result.get("documentType"),
+        "structuredData": parse_result.get("structuredData"),
         "contentLength": len(extracted_text),
         "domain": forced or (pipeline.get("route") or {}).get("domain"),
         "pipeline": pipeline,

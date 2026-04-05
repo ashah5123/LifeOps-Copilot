@@ -53,7 +53,7 @@ export default function SignupPage() {
             <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
               <SparklesIcon className="w-7 h-7 text-white" />
             </div>
-            <span className="text-3xl font-bold tracking-tight">SparkUp</span>
+            <span className="text-3xl font-bold tracking-tight">LifeOps</span>
           </div>
           <h1 className="text-4xl font-bold leading-tight mb-4">
             Your AI-powered student productivity platform
@@ -91,7 +91,7 @@ export default function SignupPage() {
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
               <SparklesIcon className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-bold text-text-primary">SparkUp</span>
+            <span className="text-2xl font-bold text-text-primary">LifeOps</span>
           </div>
 
           <h2 className="text-2xl font-bold text-text-primary mb-1">Create your account</h2>

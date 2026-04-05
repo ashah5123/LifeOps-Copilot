@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface AppState {
   sidebarOpen: boolean;
@@ -21,6 +22,9 @@ interface AppState {
 
   theme: "light" | "dark";
   toggleTheme: () => void;
+
+  _isHydrated: boolean;
+  _setHydrated: (value: boolean) => void;
 }
 
 export interface UserProfile {
@@ -35,34 +39,56 @@ export interface Toast {
   type: "success" | "error" | "info" | "warning";
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  sidebarOpen: true,
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      sidebarOpen: true,
+      toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+      setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-  gmailConnected: false,
-  setGmailConnected: (connected) => set({ gmailConnected: connected }),
+      gmailConnected: false,
+      setGmailConnected: (connected) => set({ gmailConnected: connected }),
 
-  isAuthenticated: false,
-  user: null,
-  login: (user) => set({ isAuthenticated: true, user }),
-  logout: () => set({ isAuthenticated: false, user: null, gmailConnected: false }),
+      isAuthenticated: false,
+      user: null,
+      login: (user) => set({ isAuthenticated: true, user }),
+      logout: () => set({ isAuthenticated: false, user: null, gmailConnected: false }),
 
-  toasts: [],
-  addToast: (toast) =>
-    set((s) => ({
-      toasts: [...s.toasts, { ...toast, id: crypto.randomUUID() }],
-    })),
-  removeToast: (id) =>
-    set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+      toasts: [],
+      addToast: (toast) =>
+        set((s) => ({
+          toasts: [...s.toasts, { ...toast, id: crypto.randomUUID() }],
+        })),
+      removeToast: (id) =>
+        set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
-  theme: "light",
-  toggleTheme: () =>
-    set((s) => {
-      const newTheme = s.theme === "light" ? "dark" : "light";
-      if (typeof document !== "undefined") {
-        document.documentElement.classList.toggle("dark", newTheme === "dark");
-      }
-      return { theme: newTheme };
+      theme: "light",
+      toggleTheme: () =>
+        set((s) => {
+          const newTheme = s.theme === "light" ? "dark" : "light";
+          if (typeof document !== "undefined") {
+            document.documentElement.classList.toggle("dark", newTheme === "dark");
+          }
+          return { theme: newTheme };
+        }),
+
+      _isHydrated: false,
+      _setHydrated: (value) => set({ _isHydrated: value }),
     }),
-}));
+    {
+      name: "app-store",
+      partialize: (state) => ({
+        isAuthenticated: state.isAuthenticated,
+        user: state.user,
+        gmailConnected: state.gmailConnected,
+        theme: state.theme,
+        sidebarOpen: state.sidebarOpen,
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state._setHydrated(true);
+        }
+      },
+    }
+  )
+);

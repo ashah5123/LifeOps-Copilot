@@ -33,7 +33,7 @@ export default function ConnectGmailButton() {
 
       <h2 className="text-2xl font-bold text-text-primary mb-2">Connect Your Gmail</h2>
       <p className="text-sm text-text-secondary text-center max-w-md mb-2">
-        Link your Gmail account to let SparkUp read your emails, generate AI summaries, and help you draft replies.
+        Link your Gmail account to let LifeOps read your emails, generate AI summaries, and help you draft replies.
       </p>
       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-full text-xs font-medium mb-8">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
@@ -45,7 +45,7 @@ export default function ConnectGmailButton() {
       </Button>
 
       <p className="text-xs text-text-secondary mt-4 text-center max-w-sm">
-        SparkUp will never send emails without your explicit confirmation.
+        LifeOps will never send emails without your explicit confirmation.
         Your data stays private and secure.
       </p>
     </motion.div>

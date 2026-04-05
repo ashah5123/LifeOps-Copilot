@@ -57,10 +57,10 @@ export default function LoginPage() {
             <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
               <SparklesIcon className="w-7 h-7 text-white" />
             </div>
-            <span className="text-3xl font-bold tracking-tight">SparkUp</span>
+            <span className="text-3xl font-bold tracking-tight">LifeOps</span>
           </div>
           <h1 className="text-4xl font-bold leading-tight mb-4">
-            Welcome back to SparkUp
+            Welcome back to LifeOps
           </h1>
           <p className="text-lg text-white/70 leading-relaxed">
             Pick up where you left off. Your AI assistant has been keeping track of everything while you were away.
@@ -100,10 +100,10 @@ export default function LoginPage() {
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
               <SparklesIcon className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-bold text-text-primary">SparkUp</span>
+            <span className="text-2xl font-bold text-text-primary">LifeOps</span>
           </div>
 
-          <h2 className="text-2xl font-bold text-text-primary mb-1">Log in to SparkUp</h2>
+          <h2 className="text-2xl font-bold text-text-primary mb-1">Log in to LifeOps</h2>
           <p className="text-sm text-text-secondary mb-8">
             Don&apos;t have an account?{" "}
             <Link href="/signup" className="text-primary hover:text-primary-hover font-medium">

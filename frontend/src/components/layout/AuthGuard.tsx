@@ -6,15 +6,16 @@ import { useAppStore } from "@/lib/store";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const isHydrated = useAppStore((s) => s._isHydrated);
   const router = useRouter();
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (isHydrated && !isAuthenticated) {
       router.replace("/login");
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, isHydrated]);
 
-  if (!isAuthenticated) {
+  if (!isHydrated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex items-center gap-2">
@@ -22,10 +23,14 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
-          <span className="text-sm text-text-secondary">Redirecting...</span>
+          <span className="text-sm text-text-secondary">Loading...</span>
         </div>
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return null;
   }
 
   return <>{children}</>;

@@ -20,22 +20,56 @@ python -m scripts.populate_demo_data
 
 ### 1. `applications`
 
-**Purpose:** Tracks job applications submitted through the Career module.
+**Purpose:** Tracks job applications through the full Career pipeline — from saved to accepted.
 
-| Field     | Type   | Description                                                     |
-|-----------|--------|-----------------------------------------------------------------|
-| `id`      | string | UUID generated at creation                                      |
-| `company` | string | Company name                                                    |
-| `role`    | string | Job title / role applied for                                    |
-| `status`  | string | `draft`, `applied`, `interviewing`, `offer`, `rejected`         |
+| Field             | Type           | Description                                                                 |
+|-------------------|----------------|-----------------------------------------------------------------------------|
+| `id`              | string         | UUID generated at creation                                                  |
+| `company`         | string         | Company name                                                                |
+| `role`            | string         | Job title / role applied for                                                |
+| `status`          | string         | `saved`, `applied`, `screening`, `interview`, `offer`, `rejected`, `accepted` |
+| `applied_date`    | string         | Date of application in `YYYY-MM-DD` format                                  |
+| `job_url`         | string         | Link to the original job posting                                            |
+| `job_description` | string         | Full job description text (used for skills gap analysis)                    |
+| `salary_range`    | string         | e.g. `"$80k–$100k"` or `"$40–50/hour"`                                     |
+| `location`        | string         | City, state or country                                                      |
+| `work_mode`       | string         | `remote`, `hybrid`, or `onsite`                                             |
+| `recruiter_name`  | string \| null  | Name of the recruiter or hiring manager                                     |
+| `recruiter_email` | string \| null  | Recruiter contact email                                                     |
+| `interview_dates` | list[dict]     | List of `{date, type, interviewer}` objects                                 |
+| `notes`           | string         | Free-text notes about the application                                       |
+| `resume_version`  | string         | Filename of the resume version submitted                                    |
+| `cover_letter`    | string         | Cover letter text                                                           |
+| `follow_up_date`  | string \| null  | Date to follow up if no response (`YYYY-MM-DD`)                             |
+| `match_score`     | int            | Estimated fit score 0–100 from skills gap analysis                          |
+| `created_at`      | string         | ISO timestamp when the record was created                                   |
+| `updated_at`      | string         | ISO timestamp of last update                                                |
 
 **Example document:**
 ```json
 {
-  "id": "a3f1c2d4-5e6b-7890-abcd-ef1234567890",
+  "id": "app-001",
   "company": "Google",
   "role": "Software Engineer Intern",
-  "status": "applied"
+  "status": "interview",
+  "applied_date": "2026-03-15",
+  "job_url": "https://careers.google.com/jobs/123",
+  "job_description": "Full job description here...",
+  "salary_range": "$40-50/hour",
+  "location": "Mountain View, CA",
+  "work_mode": "hybrid",
+  "recruiter_name": "Jane Smith",
+  "recruiter_email": "jsmith@google.com",
+  "interview_dates": [
+    {"date": "2026-04-10", "type": "phone screen", "interviewer": "John Doe"}
+  ],
+  "notes": "Applied through campus recruiting",
+  "resume_version": "resume_v3_swe.pdf",
+  "cover_letter": "Dear Hiring Manager...",
+  "follow_up_date": "2026-04-08",
+  "match_score": 85,
+  "created_at": "2026-03-15T10:00:00Z",
+  "updated_at": "2026-04-01T14:30:00Z"
 }
 ```
 
@@ -220,6 +254,119 @@ python -m scripts.populate_demo_data
   "type": "task",
   "title": "Review calculus homework",
   "time": "2 hours ago"
+}
+```
+
+---
+
+### 8. `interview_prep`
+
+**Purpose:** Stores interview preparation data linked to a specific job application — practice questions, STAR stories, company research, and questions to ask.
+
+| Field                  | Type       | Description                                                              |
+|------------------------|------------|--------------------------------------------------------------------------|
+| `id`                   | string     | UUID generated at creation                                               |
+| `application_id`       | string     | Reference to the parent `applications` document                          |
+| `company`              | string     | Company name (denormalised for convenience)                              |
+| `role`                 | string     | Role being applied for                                                   |
+| `interview_date`       | string     | Scheduled interview date in `YYYY-MM-DD` format                          |
+| `interview_type`       | string     | `phone`, `video`, `onsite`, or `technical`                               |
+| `practice_questions`   | list[dict] | List of `{question, category, answer \| null}` objects                   |
+| `star_stories`         | list[dict] | List of `{situation, task, action, result}` STAR story templates         |
+| `company_research`     | dict       | `{size, culture, recent_news: list, values: list}`                       |
+| `questions_to_ask`     | list[str]  | Smart questions for the candidate to ask the interviewer                 |
+| `preparation_status`   | string     | `not_started`, `in_progress`, or `ready`                                 |
+| `created_at`           | string     | ISO timestamp when the record was created                                |
+
+**Example document:**
+```json
+{
+  "id": "prep-001",
+  "application_id": "app-001",
+  "company": "Google",
+  "role": "Software Engineer Intern",
+  "interview_date": "2026-04-10",
+  "interview_type": "technical",
+  "practice_questions": [
+    {"question": "Explain your most challenging project", "category": "behavioral", "answer": null},
+    {"question": "Reverse a linked list", "category": "technical", "answer": null}
+  ],
+  "star_stories": [
+    {
+      "situation": "Team project deadline was approaching",
+      "task": "Needed to implement authentication",
+      "action": "Led design review and coded the feature",
+      "result": "Delivered on time, used by 1000+ users"
+    }
+  ],
+  "company_research": {
+    "size": "Large (100k+ employees)",
+    "culture": "Innovation-focused, collaborative",
+    "recent_news": ["Launched new AI product", "Q4 earnings beat expectations"],
+    "values": ["User focus", "Innovation", "Boldness"]
+  },
+  "questions_to_ask": [
+    "What does success look like in this role?",
+    "What are the team's current priorities?"
+  ],
+  "preparation_status": "in_progress",
+  "created_at": "2026-04-01T10:00:00Z"
+}
+```
+
+---
+
+### 9. `skills_tracking`
+
+**Purpose:** Individual skill records for a user — proficiency level, source, and project associations. Used by `SkillsAnalysisService` to track improvements over time.
+
+| Field              | Type       | Description                                                           |
+|--------------------|------------|-----------------------------------------------------------------------|
+| `id`               | string     | UUID generated at creation                                            |
+| `user_id`          | string     | Owner of this skill record                                            |
+| `skill_name`       | string     | Skill name (e.g. `"Python"`, `"React"`, `"System Design"`)           |
+| `proficiency`      | string     | `beginner`, `intermediate`, `advanced`, or `expert`                  |
+| `source`           | string     | `resume`, `added_manually`, or `learned_recently`                    |
+| `verified`         | boolean    | `true` if the skill has been demonstrated or certified                |
+| `date_acquired`    | string     | Date the skill was first learned in `YYYY-MM-DD` format              |
+| `last_used`        | string     | Date the skill was most recently used in `YYYY-MM-DD` format         |
+| `related_projects` | list[str]  | Project names or IDs where this skill was applied                    |
+
+**Example document:**
+```json
+{
+  "id": "skill-001",
+  "user_id": "user-123",
+  "skill_name": "Python",
+  "proficiency": "advanced",
+  "source": "resume",
+  "verified": true,
+  "date_acquired": "2024-01-15",
+  "last_used": "2026-04-01",
+  "related_projects": ["LifeOps-Copilot", "ML Course Project"]
+}
+```
+
+---
+
+### 10. `skill_snapshots`
+
+**Purpose:** Point-in-time snapshots of a user's full skill set, used by `track_skill_improvements()` to diff skills gained or lost over time.
+
+| Field         | Type      | Description                                              |
+|---------------|-----------|----------------------------------------------------------|
+| `id`          | string    | UUID generated at creation                               |
+| `user_id`     | string    | Owner of this snapshot                                   |
+| `skills`      | list[str] | List of skill names present at the time of the snapshot  |
+| `recorded_at` | string    | ISO timestamp when the snapshot was taken                |
+
+**Example document:**
+```json
+{
+  "id": "snap-001",
+  "user_id": "user-123",
+  "skills": ["python", "react", "sql", "docker"],
+  "recorded_at": "2026-01-01T00:00:00Z"
 }
 ```
 

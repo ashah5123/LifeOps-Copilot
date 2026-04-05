@@ -10,6 +10,7 @@ import {
   CalendarDaysIcon,
   BanknotesIcon,
   SparklesIcon,
+  InformationCircleIcon,
 } from "@heroicons/react/24/outline";
 import { useAppStore } from "@/lib/store";
 import SparklesEffect from "@/components/ui/SparklesEffect";
@@ -19,9 +20,11 @@ import {
   BriefcaseIcon as BriefcaseIconSolid,
   CalendarDaysIcon as CalendarDaysIconSolid,
   BanknotesIcon as BanknotesIconSolid,
+  InformationCircleIcon as InformationCircleIconSolid,
 } from "@heroicons/react/24/solid";
 
 const navItems = [
+  { href: "/know-us", label: "Know Us", shortLabel: "Know", icon: InformationCircleIcon, activeIcon: InformationCircleIconSolid },
   { href: "/dashboard", label: "Dashboard", icon: HomeIcon, activeIcon: HomeIconSolid },
   { href: "/inbox", label: "Inbox", icon: InboxIcon, activeIcon: InboxIconSolid },
   { href: "/career", label: "Career", icon: BriefcaseIcon, activeIcon: BriefcaseIconSolid },
@@ -57,7 +60,7 @@ export default function Sidebar() {
             const Icon = isActive ? item.activeIcon : item.icon;
 
             return (
-              <Link key={item.href} href={item.href} className="group block">
+              <Link key={item.href} href={item.href} className="group block" aria-label={item.label}>
                 <motion.div
                   whileHover={{ x: 4, scale: 1.03 }}
                   whileTap={{ scale: 0.98 }}
@@ -121,22 +124,23 @@ export default function Sidebar() {
       </aside>
 
       {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 glass border-t z-40 px-2 py-2" style={{ borderColor: "var(--bd)" }}>
-        <div className="flex items-center justify-around">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 glass border-t z-40 px-1 py-2" style={{ borderColor: "var(--bd)" }}>
+        <div className="flex items-center justify-around gap-0.5">
           {navItems.map((item) => {
             const isActive =
               pathname === item.href ||
               (item.href === "/dashboard" && pathname === "/");
             const Icon = isActive ? item.activeIcon : item.icon;
+            const mobileLabel = item.shortLabel ?? item.label;
 
             return (
-              <Link key={item.href} href={item.href}>
+              <Link key={item.href} href={item.href} className="min-w-0 flex-1" aria-label={item.label}>
                 <motion.div
                   whileTap={{ scale: 0.9 }}
-                  className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors ${isActive ? "text-primary" : "text-white/50"
+                  className={`flex flex-col items-center gap-0.5 px-1 py-1.5 rounded-lg transition-colors ${isActive ? "text-primary" : "text-white/50"
                   }`}>
-                  <Icon className="w-5 h-5" />
-                  <span className="text-[10px] font-medium">{item.label}</span>
+                  <Icon className="w-5 h-5 shrink-0" />
+                  <span className="text-center text-[9px] font-medium leading-tight">{mobileLabel}</span>
                   {isActive && (
                     <motion.div
                       layoutId="mobile-active"

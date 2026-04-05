@@ -10,8 +10,10 @@ from app.services.firestore_service import FirestoreService
 from app.services.gmail_service import GmailService
 from app.services.google_oauth_service import GoogleOAuthService
 from app.services.agent_runner import AgentRunner
+from app.services.deadline_service import DeadlineService
 from app.services.reminder_service import ReminderService
 from app.services.storage_service import StorageService
+from app.services.time_analytics_service import TimeAnalyticsService
 from app.services.vertex_service import VertexService
 
 # Core singletons
@@ -21,6 +23,8 @@ auth_service = AuthService()
 vertex_service = VertexService()
 document_ai_service = DocumentAIService()
 reminder_service = ReminderService()
+deadline_service = DeadlineService()
+time_analytics_service = TimeAnalyticsService()
 
 # Google integrations
 oauth_service = GoogleOAuthService()

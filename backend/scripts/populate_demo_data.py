@@ -9,7 +9,7 @@ data is available immediately in the same process.  Start uvicorn *after*
 importing this module, or call populate() from your app startup for demos.
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 from uuid import uuid4
 
@@ -492,17 +492,218 @@ def _populate_career() -> tuple[int, int, int]:
 
 
 # ---------------------------------------------------------------------------
+# Calendar deadlines & time analytics (schemas: deadlines, time_* , behavior_* , focus_*)
+# ---------------------------------------------------------------------------
+
+def _populate_calendar_deadlines_and_time_analytics() -> tuple[int, int, int, int, int, int, int]:
+    """Seed Firestore-shaped collections for DeadlineService / TimeAnalyticsService persistence."""
+    today = date.today()
+    user_id = "demo-user"
+    y, w, _ = today.isocalendar()
+    week_cur = f"{y}-W{w:02d}"
+    prev = today - timedelta(days=7)
+    py, pw, _ = prev.isocalendar()
+    week_prev = f"{py}-W{pw:02d}"
+
+    def _dt(day_offset: int, hour: int, minute: int = 0) -> str:
+        d = today + timedelta(days=day_offset)
+        return datetime(d.year, d.month, d.day, hour, minute, tzinfo=timezone.utc).isoformat()
+
+    deadlines = [
+        {
+            "id": "dl-demo-1",
+            "user_id": user_id,
+            "title": "Problem Set 3",
+            "type": "assignment",
+            "dueDate": _dt(2, 23, 59),
+            "status": "pending",
+            "course": "CS 101",
+            "notes": None,
+            "milestones": [],
+            "created_at": _dt(-5, 10, 0),
+            "updated_at": _dt(-5, 10, 0),
+        },
+        {
+            "id": "dl-demo-2",
+            "user_id": user_id,
+            "title": "Midterm paper draft",
+            "type": "assignment",
+            "dueDate": _dt(5, 17, 0),
+            "status": "pending",
+            "course": "ENG 200",
+            "notes": None,
+            "milestones": [],
+            "created_at": _dt(-7, 9, 0),
+            "updated_at": _dt(-7, 9, 0),
+        },
+        {
+            "id": "dl-demo-3",
+            "user_id": user_id,
+            "title": "Capstone milestone",
+            "type": "project",
+            "dueDate": _dt(-1, 9, 0),
+            "status": "late",
+            "course": "CS 499",
+            "notes": None,
+            "milestones": [],
+            "created_at": _dt(-14, 12, 0),
+            "updated_at": _dt(-1, 9, 30),
+        },
+        {
+            "id": "dl-demo-4",
+            "user_id": user_id,
+            "title": "Lab report",
+            "type": "assignment",
+            "dueDate": _dt(-3, 23, 59),
+            "status": "missed",
+            "course": "PHY 120",
+            "notes": None,
+            "milestones": [],
+            "created_at": _dt(-10, 8, 0),
+            "updated_at": _dt(-3, 23, 59),
+        },
+    ]
+    for doc in deadlines:
+        firestore_service.create("deadlines", doc)
+
+    activity_logs = [
+        ("study", "Deep work — algorithms", "CS 101", -1, 9, 0, -1, 10, 30),
+        ("study", "Reading", "ENG 200", -2, 14, 0, -2, 15, 30),
+        ("class", "Lecture", "PHY 120", 0, 10, 0, 0, 11, 15),
+        ("work", "Campus job shift", None, -3, 14, 0, -3, 18, 0),
+        ("free_time", "Break / meals", None, -1, 12, 0, -1, 13, 0),
+        ("study", "Evening lab", "CS 499", -4, 20, 0, -4, 22, 0),
+        ("study", "Problem set", "CS 101", -6, 19, 0, -6, 21, 0),
+        ("work", "TA hours", "CS 101", -5, 16, 0, -5, 17, 30),
+    ]
+    for cat, label, course, sd, sh, sm, ed, eh, em in activity_logs:
+        sd_d = today + timedelta(days=sd)
+        ed_d = today + timedelta(days=ed)
+        started = datetime(sd_d.year, sd_d.month, sd_d.day, sh, sm, tzinfo=timezone.utc).isoformat()
+        ended = datetime(ed_d.year, ed_d.month, ed_d.day, eh, em, tzinfo=timezone.utc).isoformat()
+        firestore_service.create(
+            "time_activity_logs",
+            {
+                "id": str(uuid4()),
+                "user_id": user_id,
+                "started_at": started,
+                "ended_at": ended,
+                "category": cat,
+                "label": label,
+                "course": course,
+                "source": "manual",
+            },
+        )
+
+    firestore_service.create(
+        "time_week_summaries",
+        {
+            "id": str(uuid4()),
+            "user_id": user_id,
+            "week": week_cur,
+            "hours": {"classes": 18.0, "study": 22.0, "work": 12.0, "free_time": 42.0},
+            "source": "tracked",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    firestore_service.create(
+        "time_week_summaries",
+        {
+            "id": str(uuid4()),
+            "user_id": user_id,
+            "week": week_prev,
+            "hours": {"classes": 17.0, "study": 24.0, "work": 10.0, "free_time": 40.0},
+            "source": "tracked",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    course_metrics = [
+        ("CS 101", "CS 101", 42.0, 88.0),
+        ("ENG 200", "ENG 200", 28.0, 91.0),
+        ("PHY 120", "PHY 120", 55.0, 79.0),
+        ("CS 499", "CS 499", 96.0, 93.0),
+    ]
+    for course, code, hrs, grade in course_metrics:
+        firestore_service.create(
+            "course_study_metrics",
+            {
+                "id": str(uuid4()),
+                "user_id": user_id,
+                "course": course,
+                "course_code": code,
+                "semester": "2026-spring",
+                "hours_logged": hrs,
+                "grade_percent": grade,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+
+    signals = [
+        ("late_night_study", "medium", 9, {"typical_window_local": "23:00–01:30"}),
+        ("last_minute_work", "high", 5, {"share_of_assignments_percent": 35.0}),
+        ("context_switching", "low", 14, {}),
+    ]
+    for sig_type, severity, occ, meta in signals:
+        firestore_service.create(
+            "behavior_signals",
+            {
+                "id": str(uuid4()),
+                "user_id": user_id,
+                "signal_type": sig_type,
+                "severity": severity,
+                "detected_at": datetime.now(timezone.utc).isoformat(),
+                "occurrences_window": occ,
+                "metadata": meta,
+            },
+        )
+
+    firestore_service.create(
+        "focus_time_profiles",
+        {
+            "id": str(uuid4()),
+            "user_id": user_id,
+            "best_windows": [
+                {"weekday": "Tuesday", "start": "09:00", "end": "11:30", "score": 0.92, "reason": "Highest historical focus streaks"},
+                {"weekday": "Thursday", "start": "08:30", "end": "10:00", "score": 0.88, "reason": "Low interruption rate"},
+            ],
+            "secondary_windows": [
+                {"weekday": "Wednesday", "start": "14:00", "end": "15:30", "score": 0.72},
+            ],
+            "avoid": [
+                {"weekday": "Friday", "start": "16:00", "end": "19:00", "reason": "Elevated context switching"},
+            ],
+            "historical_basis": "rolling_8_week_demo_profile",
+            "timezone_note": "Local wall-clock; connect calendar for personalization.",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    return (
+        len(deadlines),
+        len(activity_logs),
+        2,
+        len(course_metrics),
+        len(signals),
+        1,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def populate() -> None:
     budget_entries, budget_goals = _populate_budget()
     applications, prep_records, skills = _populate_career()
+    dl, logs, weeks, metrics, sigs, profiles = _populate_calendar_deadlines_and_time_analytics()
 
     print(
         f"Demo data loaded:\n"
-        f"  Budget  — {budget_entries} entries, {budget_goals} goals\n"
-        f"  Career  — {applications} applications, {prep_records} interview prep records, {skills} skills\n"
+        f"  Budget   — {budget_entries} entries, {budget_goals} goals\n"
+        f"  Career   — {applications} applications, {prep_records} interview prep records, {skills} skills\n"
+        f"  Calendar — {dl} deadlines, {logs} time_activity_logs, {weeks} time_week_summaries, "
+        f"{metrics} course_study_metrics, {sigs} behavior_signals, {profiles} focus_time_profiles\n"
     )
 
 

@@ -1,10 +1,17 @@
 """Calendar routes — schedule extraction, reminders, and study planning."""
 
-from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
-from app.core.dependencies import agent_runner, reminder_service, vertex_service
+from app.core.dependencies import (
+    agent_runner,
+    deadline_service,
+    reminder_service,
+    time_analytics_service,
+    vertex_service,
+)
 from app.services.study_planner_service import StudyPlannerService
+from app.services.time_analytics_service import resolve_week_argument
 
 study_planner = StudyPlannerService()
 
@@ -195,3 +202,114 @@ def get_workload(week: str) -> dict:
 def prioritize_assignments(payload: AssignmentPriorityPayload) -> list:
     """Return assignments sorted by urgency score."""
     return study_planner.prioritize_assignments(payload.assignments)
+
+
+# ------------------------------------------------------------------
+# Deadline service — upcoming / overdue / milestones / reminders
+# ------------------------------------------------------------------
+
+
+class BigProjectPayload(BaseModel):
+    big_project: dict = Field(default_factory=dict)
+
+
+class DeadlineRemindersPayload(BaseModel):
+    task_size: str = "medium"
+
+
+@router.get("/deadlines/upcoming")
+def list_upcoming_deadlines(days: int = Query(default=7, ge=1, le=366)) -> dict[str, object]:
+    """All deadlines in the next N days, sorted by urgency (soonest first)."""
+    items = deadline_service.get_upcoming_deadlines(days=days)
+    return {"days": days, "deadlines": items, "count": len(items)}
+
+
+@router.get("/deadlines/overdue")
+def list_overdue_deadlines() -> dict[str, object]:
+    """Missed deadlines and late assignments (excludes completed)."""
+    items = deadline_service.get_overdue_items()
+    return {"deadlines": items, "count": len(items)}
+
+
+@router.post("/deadlines/{deadline_id}/milestones")
+def create_deadline_milestones(deadline_id: str, payload: BigProjectPayload) -> dict[str, object]:
+    """Break a large project into milestones with intermediate due dates."""
+    base = deadline_service.get_by_id(deadline_id)
+    if base is None:
+        raise HTTPException(status_code=404, detail="deadline not found")
+    merged: dict = {**base, **payload.big_project, "id": deadline_id}
+    try:
+        milestones = deadline_service.create_milestone_breakdown(merged)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"deadlineId": deadline_id, "milestones": milestones, "count": len(milestones)}
+
+
+@router.post("/deadlines/{deadline_id}/reminders")
+def auto_set_deadline_reminders(
+    deadline_id: str,
+    payload: DeadlineRemindersPayload,
+) -> dict[str, object]:
+    """Auto-suggest reminder times and create reminders (1w / 3d / 1d by task size)."""
+    base = deadline_service.get_by_id(deadline_id)
+    if base is None:
+        raise HTTPException(status_code=404, detail="deadline not found")
+    due_raw = base.get("dueDate") or base.get("due_date")
+    if not due_raw:
+        raise HTTPException(status_code=400, detail="deadline has no due date")
+    suggestions = deadline_service.suggest_deadline_reminders(str(due_raw), payload.task_size)
+    title = str(base.get("title", "Deadline"))
+    created: list[dict[str, object]] = []
+    for s in suggestions:
+        r = reminder_service.create_reminder(
+            title=f"{title} — {s['label']}",
+            date_time=str(s["sendAt"]),
+            source_module="calendar",
+        )
+        created.append({"suggestion": s, "reminder": r})
+    return {
+        "deadlineId": deadline_id,
+        "taskSize": payload.task_size,
+        "reminders": created,
+        "count": len(created),
+    }
+
+
+# ------------------------------------------------------------------
+# Time analytics (demo baselines)
+# ------------------------------------------------------------------
+
+
+@router.get("/analytics/time-distribution")
+def calendar_time_distribution(
+    week: str | None = Query(
+        default=None,
+        description="ISO week YYYY-WNN or any YYYY-MM-DD in that week; defaults to current week",
+    ),
+) -> dict[str, object]:
+    """How time is spent: classes, study, work, free time (demo model)."""
+    w = resolve_week_argument(week)
+    try:
+        return time_analytics_service.get_time_distribution(w)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/analytics/procrastination")
+def calendar_procrastination_patterns() -> dict[str, object]:
+    """Late-night studying, last-minute work, and related signals."""
+    items = time_analytics_service.detect_procrastination_patterns()
+    return {"patterns": items, "count": len(items)}
+
+
+@router.get("/analytics/productivity-tips")
+def calendar_productivity_tips() -> dict[str, object]:
+    """Recommendations informed by detected procrastination patterns."""
+    tips = time_analytics_service.suggest_productivity_improvements()
+    return {"tips": tips, "count": len(tips)}
+
+
+@router.get("/analytics/focus-times")
+def calendar_focus_time_recommendations() -> dict[str, object]:
+    """Suggested focus windows from historical demo patterns."""
+    return time_analytics_service.get_focus_time_recommendations()

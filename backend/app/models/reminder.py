@@ -6,3 +6,4 @@ class Reminder(BaseModel):
     title: str
     dateTime: str
     sourceModule: str
+    deadlineId: str | None = None

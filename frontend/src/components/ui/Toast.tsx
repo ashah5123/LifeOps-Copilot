@@ -11,17 +11,17 @@ import {
 import { useAppStore, type Toast as ToastType } from "@/lib/store";
 
 const icons = {
-  success: <CheckCircleIcon className="w-5 h-5 text-success" />,
-  error: <ExclamationCircleIcon className="w-5 h-5 text-error" />,
-  warning: <ExclamationCircleIcon className="w-5 h-5 text-warning" />,
-  info: <InformationCircleIcon className="w-5 h-5 text-primary" />,
+  success: <CheckCircleIcon className="w-5 h-5 text-emerald-400" />,
+  error: <ExclamationCircleIcon className="w-5 h-5 text-red-400" />,
+  warning: <ExclamationCircleIcon className="w-5 h-5 text-amber-400" />,
+  info: <InformationCircleIcon className="w-5 h-5 text-blue-400" />,
 };
 
 const bgColors = {
-  success: "bg-green-50 border-success/30",
-  error: "bg-red-50 border-error/30",
-  warning: "bg-amber-50 border-warning/30",
-  info: "bg-blue-50 border-primary/30",
+  success: "bg-surface border-emerald-500/30",
+  error: "bg-surface border-red-500/30",
+  warning: "bg-surface border-amber-500/30",
+  info: "bg-surface border-blue-500/30",
 };
 
 function ToastItem({ toast }: { toast: ToastType }) {
@@ -38,11 +38,11 @@ function ToastItem({ toast }: { toast: ToastType }) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -20, scale: 0.95 }}
       transition={{ duration: 0.25 }}
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg ${bgColors[toast.type]}`}
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl shadow-black/20 ${bgColors[toast.type]}`}
     >
       {icons[toast.type]}
       <p className="text-sm text-text-primary flex-1">{toast.message}</p>
-      <button onClick={() => removeToast(toast.id)} className="p-0.5 hover:bg-black/5 rounded cursor-pointer">
+      <button onClick={() => removeToast(toast.id)} className="p-0.5 hover:bg-surface-hover rounded cursor-pointer">
         <XMarkIcon className="w-4 h-4 text-text-secondary" />
       </button>
     </motion.div>

@@ -83,13 +83,12 @@ export default function BudgetPage() {
               <motion.div
                 key={alert.id}
                 variants={item}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
-                  alert.severity === "warning"
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${alert.severity === "warning"
                     ? "bg-amber-50 border-amber-200 text-amber-800"
                     : alert.severity === "error"
                       ? "bg-red-50 border-red-200 text-red-800"
                       : "bg-blue-50 border-blue-200 text-blue-800"
-                }`}
+                  }`}
               >
                 {alert.severity === "warning" || alert.severity === "error" ? (
                   <ExclamationTriangleIcon className="w-5 h-5 flex-shrink-0" />
@@ -175,9 +174,8 @@ export default function BudgetPage() {
                       className="flex items-center justify-between py-3 px-2"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                          entry.type === "income" ? "bg-green-100" : "bg-gray-100"
-                        }`}>
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${entry.type === "income" ? "bg-green-100" : "bg-gray-100"
+                          }`}>
                           {entry.type === "income" ? (
                             <ArrowTrendingUpIcon className="w-4 h-4 text-green-600" />
                           ) : (
@@ -194,9 +192,8 @@ export default function BudgetPage() {
                           </div>
                         </div>
                       </div>
-                      <p className={`text-sm font-semibold ${
-                        entry.type === "income" ? "text-success" : "text-text-primary"
-                      }`}>
+                      <p className={`text-sm font-semibold ${entry.type === "income" ? "text-success" : "text-text-primary"
+                        }`}>
                         {entry.type === "income" ? "+" : "-"}${entry.amount.toFixed(2)}
                       </p>
                     </motion.div>

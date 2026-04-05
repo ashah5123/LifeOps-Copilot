@@ -18,15 +18,15 @@ const categoryIcons = {
 };
 
 const categoryColors = {
-  inbox: "bg-blue-100 text-blue-600",
-  career: "bg-purple-100 text-purple-600",
-  calendar: "bg-green-100 text-green-600",
-  budget: "bg-amber-100 text-amber-600",
+  inbox: "bg-blue-500/10 text-blue-400",
+  career: "bg-violet-500/10 text-violet-400",
+  calendar: "bg-emerald-500/10 text-emerald-400",
+  budget: "bg-amber-500/10 text-amber-400",
 };
 
 export default function TodayFeed({ items }: { items: FeedItem[] }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-1">
       {items.map((item, index) => {
         const Icon = categoryIcons[item.category];
         return (
@@ -37,7 +37,7 @@ export default function TodayFeed({ items }: { items: FeedItem[] }) {
             transition={{ duration: 0.25, delay: index * 0.05 }}
           >
             <Link href={item.actionUrl}>
-              <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors group">
+              <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-hover transition-colors group">
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${categoryColors[item.category]}`}>
                   <Icon className="w-4 h-4" />
                 </div>

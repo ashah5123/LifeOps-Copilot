@@ -1,9 +1,12 @@
-"""Calendar routes — schedule extraction and reminders."""
+"""Calendar routes — schedule extraction, reminders, and study planning."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from app.core.dependencies import agent_runner, reminder_service, vertex_service
+from app.services.study_planner_service import StudyPlannerService
+
+study_planner = StudyPlannerService()
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -107,3 +110,88 @@ def list_events() -> list[dict[str, str]]:
 @router.post("/sync-google")
 def sync_google_calendar() -> dict[str, str]:
     return {"status": "connected-in-demo-mode"}
+
+
+# ------------------------------------------------------------------
+# Study planning request models
+# ------------------------------------------------------------------
+
+class SyllabusParsePayload(BaseModel):
+    syllabusText: str
+
+
+class StudyPlanPayload(BaseModel):
+    courses: list[dict]
+    studyHoursPerWeek: float = 20.0
+
+
+class ConflictsPayload(BaseModel):
+    events: list[dict]
+
+
+class StudyBlocksPayload(BaseModel):
+    calendarEvents: list[dict] = []
+
+
+class AssignmentPriorityPayload(BaseModel):
+    assignments: list[dict]
+
+
+# ------------------------------------------------------------------
+# POST /api/calendar/syllabus/parse
+# ------------------------------------------------------------------
+
+@router.post("/syllabus/parse")
+def parse_syllabus(payload: SyllabusParsePayload) -> dict:
+    """Extract course details, assignments, and exams from syllabus text."""
+    return study_planner.parse_syllabus(payload.syllabusText)
+
+
+# ------------------------------------------------------------------
+# POST /api/calendar/study-plan
+# ------------------------------------------------------------------
+
+@router.post("/study-plan")
+def create_study_plan(payload: StudyPlanPayload) -> dict:
+    """Generate a weekly study schedule across provided courses."""
+    return study_planner.create_study_plan(payload.courses, payload.studyHoursPerWeek)
+
+
+# ------------------------------------------------------------------
+# POST /api/calendar/conflicts
+# ------------------------------------------------------------------
+
+@router.post("/conflicts")
+def detect_conflicts(payload: ConflictsPayload) -> dict:
+    """Detect scheduling conflicts among a list of calendar events."""
+    return study_planner.detect_scheduling_conflicts(payload.events)
+
+
+# ------------------------------------------------------------------
+# POST /api/calendar/study-blocks
+# ------------------------------------------------------------------
+
+@router.post("/study-blocks")
+def suggest_study_blocks(payload: StudyBlocksPayload) -> list:
+    """Return suggested 2-hour study windows over the next 7 days."""
+    return study_planner.suggest_study_blocks(payload.calendarEvents)
+
+
+# ------------------------------------------------------------------
+# GET /api/calendar/workload/{week}
+# ------------------------------------------------------------------
+
+@router.get("/workload/{week}")
+def get_workload(week: str) -> dict:
+    """Return workload analysis for a given week (YYYY-WNN or YYYY-MM-DD)."""
+    return study_planner.calculate_workload(week)
+
+
+# ------------------------------------------------------------------
+# POST /api/calendar/assignments/priority
+# ------------------------------------------------------------------
+
+@router.post("/assignments/priority")
+def prioritize_assignments(payload: AssignmentPriorityPayload) -> list:
+    """Return assignments sorted by urgency score."""
+    return study_planner.prioritize_assignments(payload.assignments)

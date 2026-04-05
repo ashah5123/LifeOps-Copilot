@@ -92,10 +92,18 @@ def update_budget_entry(entry_id: str, payload: BudgetEntryPayload) -> dict[str,
     return updated or {"id": entry_id, "status": "not-found"}
 
 
+# ------------------------------------------------------------------
+# Monthly summary
+# ------------------------------------------------------------------
+
 @router.get("/summary/{month}")
 def get_monthly_summary(month: str) -> dict:
     return analytics.get_monthly_summary(month)
 
+
+# ------------------------------------------------------------------
+# Category breakdown
+# ------------------------------------------------------------------
 
 @router.get("/breakdown/{entry_type}")
 def get_category_breakdown(
@@ -107,30 +115,54 @@ def get_category_breakdown(
     return analytics.get_category_breakdown(entry_type, month)
 
 
+# ------------------------------------------------------------------
+# Trends
+# ------------------------------------------------------------------
+
 @router.get("/trends")
 def get_spending_trends(months: int = Query(default=6, ge=1, le=24)) -> dict:
     return analytics.get_spending_trends(months)
 
+
+# ------------------------------------------------------------------
+# Health score
+# ------------------------------------------------------------------
 
 @router.get("/health")
 def get_budget_health() -> dict:
     return analytics.get_budget_health_score()
 
 
+# ------------------------------------------------------------------
+# Anomalies
+# ------------------------------------------------------------------
+
 @router.get("/anomalies")
 def detect_anomalies() -> list:
     return analytics.detect_anomalies()
 
+
+# ------------------------------------------------------------------
+# Forecast
+# ------------------------------------------------------------------
 
 @router.get("/forecast")
 def forecast_budget() -> dict:
     return analytics.forecast_next_month()
 
 
+# ------------------------------------------------------------------
+# Recurring expenses
+# ------------------------------------------------------------------
+
 @router.get("/recurring")
 def get_recurring_expenses() -> list:
     return analytics.get_recurring_expenses()
 
+
+# ------------------------------------------------------------------
+# Budget goals
+# ------------------------------------------------------------------
 
 @router.post("/goals")
 def create_budget_goal(payload: BudgetGoalPayload) -> dict:
@@ -149,6 +181,10 @@ def get_goals_progress() -> dict:
     return analytics.compare_with_goals()
 
 
+# ------------------------------------------------------------------
+# Insights and recommendations
+# ------------------------------------------------------------------
+
 @router.get("/insights")
 def get_budget_insights() -> dict:
     return {
@@ -156,6 +192,10 @@ def get_budget_insights() -> dict:
         "recommendations": insights_service.get_recommendations(),
     }
 
+
+# ------------------------------------------------------------------
+# Advanced filtering
+# ------------------------------------------------------------------
 
 @router.get("/entries/filter")
 def filter_entries(
@@ -181,6 +221,10 @@ def filter_entries(
         entries = [e for e in entries if e.get("amount", 0) <= max_amount]
     return entries
 
+
+# ------------------------------------------------------------------
+# Reports
+# ------------------------------------------------------------------
 
 @router.get("/reports/monthly/{month}")
 def get_monthly_report(month: str) -> dict:

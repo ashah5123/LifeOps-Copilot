@@ -25,7 +25,6 @@ class UploadResponse(BaseModel):
     fileUrl: str
     status: str
     extractedText: str
-    # Agent pipeline results (populated when text was extracted)
     agentResult: dict | None = None
 
 
@@ -37,15 +36,12 @@ async def upload_file(file: UploadFile) -> UploadResponse:
 
     file_url = storage_service.upload_file(file_name, file_content)
 
-    # --- Text extraction ---
     extracted_text = ""
 
-    # Try Document AI first for PDFs if available
     if content_type == "application/pdf" and document_ai_service.is_live:
         doc_result = document_ai_service.parse_document(file_content, content_type)
         extracted_text = doc_result.get("extractedText", "")
 
-    # Fall back to local file_processor_service
     if not extracted_text:
         suffix = os.path.splitext(file_name)[1]
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -56,16 +52,13 @@ async def upload_file(file: UploadFile) -> UploadResponse:
         finally:
             os.unlink(tmp_path)
 
-    # For text files, read directly
     if not extracted_text and content_type.startswith("text/"):
         extracted_text = file_content.decode("utf-8", errors="replace")
 
-    # --- Agent pipeline processing ---
     agent_result = None
     if extracted_text and len(extracted_text.strip()) > 10:
         try:
             pipeline_output = agent_runner.process(extracted_text)
-            # Flatten for the response
             route = pipeline_output.get("route", {})
             extracted = pipeline_output.get("extracted", {})
             plan = pipeline_output.get("plan", {})
@@ -86,7 +79,7 @@ async def upload_file(file: UploadFile) -> UploadResponse:
                 "memoryId": memory.get("memoryId", ""),
             }
         except Exception:
-            pass  # Agent pipeline failure shouldn't break upload
+            pass
 
     upload_id = str(uuid4())
     status = "processed" if agent_result else ("extracted" if extracted_text else "uploaded")

@@ -52,7 +52,6 @@ def process_file(file_path: str, file_type: str) -> str:
         return extract_text_from_image(file_path)
     if file_type in ("text/plain", "text/csv", "message/rfc822", "text/html"):
         return extract_text_from_text_file(file_path)
-    # Try text extraction as fallback for unknown types
     if file_path.endswith((".txt", ".csv", ".eml", ".md")):
         return extract_text_from_text_file(file_path)
     return ""

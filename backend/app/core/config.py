@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     google_client_secret: str = "demo-client-secret"
     google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
 
+    # RapidAPI — JSearch
+    rapidapi_key: str = "demo-key"
+    rapidapi_host: str = "jsearch.p.rapidapi.com"
+
     @property
     def is_gcp_configured(self) -> bool:
         """True when real GCP credentials are available."""

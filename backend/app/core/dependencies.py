@@ -4,6 +4,7 @@ Constructed once at import time and reused across the app.  Each service
 is safe to use in mock/demo mode when GCP is not configured.
 """
 
+from app.core.config import settings
 from app.services.auth_service import AuthService
 from app.services.document_ai_service import DocumentAIService
 from app.services.firestore_service import FirestoreService
@@ -13,13 +14,22 @@ from app.services.agent_runner import AgentRunner
 from app.services.deadline_service import DeadlineService
 from app.services.job_matching_service import JobMatchingService
 from app.services.job_scraper_service import JobScraperService
+from app.services.mongo_store import MongoDocumentStore
 from app.services.reminder_service import ReminderService
 from app.services.storage_service import StorageService
 from app.services.time_analytics_service import TimeAnalyticsService
 from app.services.vertex_service import VertexService
 
+
+def _build_document_store() -> FirestoreService | MongoDocumentStore:
+    uri = (settings.mongodb_uri or "").strip()
+    if uri:
+        return MongoDocumentStore(uri, settings.mongodb_database)
+    return FirestoreService()
+
+
 # Core singletons
-firestore_service = FirestoreService()
+firestore_service = _build_document_store()
 storage_service = StorageService()
 auth_service = AuthService()
 vertex_service = VertexService()
@@ -29,7 +39,7 @@ deadline_service = DeadlineService()
 time_analytics_service = TimeAnalyticsService()
 
 # Google integrations
-oauth_service = GoogleOAuthService()
+oauth_service = GoogleOAuthService(document_store=firestore_service)
 gmail_service = GmailService(oauth_service=oauth_service)
 
 # Job services

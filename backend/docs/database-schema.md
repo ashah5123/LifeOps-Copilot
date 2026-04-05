@@ -42,6 +42,7 @@ python -m scripts.populate_demo_data
 | `cover_letter`    | string         | Cover letter text                                                           |
 | `follow_up_date`  | string \| null  | Date to follow up if no response (`YYYY-MM-DD`)                             |
 | `match_score`     | int            | Estimated fit score 0–100 from skills gap analysis                          |
+| `job_id`          | string \| null | External listing id when the application was created from job search / scraper (links card ↔ application) |
 | `created_at`      | string         | ISO timestamp when the record was created                                   |
 | `updated_at`      | string         | ISO timestamp of last update                                                |
 
@@ -49,6 +50,7 @@ python -m scripts.populate_demo_data
 ```json
 {
   "id": "app-001",
+  "job_id": "remotive-12345",
   "company": "Google",
   "role": "Software Engineer Intern",
   "status": "interview",

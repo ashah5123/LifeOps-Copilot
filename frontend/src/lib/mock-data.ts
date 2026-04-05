@@ -205,6 +205,7 @@ export const mockApplications: Application[] = [
     status: "applied",
     appliedDate: "2026-03-20",
     deadline: "2026-04-20",
+    url: "https://careers.microsoft.com",
   },
   {
     id: "a3",
@@ -212,6 +213,7 @@ export const mockApplications: Application[] = [
     role: "Software Engineering Intern",
     status: "applied",
     appliedDate: "2026-03-25",
+    url: "https://stripe.com/jobs",
   },
   {
     id: "a4",

@@ -24,10 +24,10 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import { useAppStore, type BudgetEntry } from "@/lib/store";
-import { mockBudgetSummary, mockBudgetEntries } from "@/lib/mock-data";
 import {
   listBudgetEntries,
   createBudgetEntry,
+  patchBudgetEntry,
   getBudgetInsights,
   exportBudgetCsvBlob,
 } from "@/lib/api";
@@ -192,6 +192,7 @@ export default function BudgetPage() {
   const setMonthlyBudget = useAppStore((s) => s.setMonthlyBudget);
   const budgetEntries = useAppStore((s) => s.budgetEntries);
   const addBudgetEntry = useAppStore((s) => s.addBudgetEntry);
+  const updateBudgetEntry = useAppStore((s) => s.updateBudgetEntry);
   const removeBudgetEntry = useAppStore((s) => s.removeBudgetEntry);
 
   const [serverEntries, setServerEntries] = useState<BudgetEntry[]>([]);
@@ -234,12 +235,9 @@ export default function BudgetPage() {
     }
   }, []);
 
-  /* ── combined entries (mock + API + persisted) — dedupe by id ────────────── */
+  /* ── combined entries (API + user-added local) — dedupe by id ────────────── */
   const allEntries = useMemo(() => {
     const byId = new Map<string, BudgetEntry>();
-    for (const e of mockBudgetEntries) {
-      if (!byId.has(e.id)) byId.set(e.id, e);
-    }
     for (const e of serverEntries) {
       byId.set(e.id, e);
     }
@@ -281,19 +279,33 @@ export default function BudgetPage() {
       color: catColors[category] || "#6B7280",
     }));
 
+    const alerts: { id: string; message: string; severity: "warning" | "info" | "error" }[] = [];
+    if (totalExpenses > 0 && monthlyBudget > 0) {
+      const pct = Math.round((totalExpenses / monthlyBudget) * 100);
+      if (pct >= 90) {
+        alerts.push({
+          id: "budget-cap",
+          message: `You've used about ${pct}% of your monthly budget.`,
+          severity: "warning",
+        });
+      }
+    }
+
     return {
       totalIncome,
       totalExpenses,
       balance: totalIncome - totalExpenses,
       categories,
-      alerts: mockBudgetSummary.alerts,
+      alerts,
     };
-  }, [allEntries]);
+  }, [allEntries, monthlyBudget]);
 
   const spentPercentage = monthlyBudget > 0 ? Math.round((summary.totalExpenses / monthlyBudget) * 100) : 0;
 
   /* ── local UI state ────────────────────────────────── */
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<BudgetEntry | null>(null);
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetDraft, setBudgetDraft] = useState(String(monthlyBudget));
 
@@ -355,6 +367,42 @@ export default function BudgetPage() {
     setEntryDate(new Date().toISOString().slice(0, 10));
   }
 
+  function budgetFormToApiPayload(
+    description: string,
+    amount: number,
+    type: BudgetEntry["type"],
+    category: string,
+    dateStr: string,
+  ) {
+    const entry_type = type === "expense" ? "expense" : "income";
+    return {
+      title: description,
+      amount,
+      entry_type,
+      category,
+      date: dateStr,
+      is_recurring: false,
+      recurring_frequency: null as string | null,
+      notes: type !== "expense" && type !== "income" ? type : null,
+    };
+  }
+
+  function canEditBudgetEntry(entry: BudgetEntry) {
+    return (
+      serverEntries.some((s) => s.id === entry.id) || budgetEntries.some((b) => b.id === entry.id)
+    );
+  }
+
+  function openEditEntry(entry: BudgetEntry) {
+    setEditingEntry(entry);
+    setEntryDesc(entry.description);
+    setEntryAmount(String(entry.amount));
+    setEntryType(entry.type);
+    setEntryCategory(entry.category);
+    setEntryDate(entry.date);
+    setShowEditModal(true);
+  }
+
   async function handleAddEntry(e: React.FormEvent) {
     e.preventDefault();
     const amount = parseFloat(entryAmount);
@@ -387,6 +435,41 @@ export default function BudgetPage() {
     setShowAddModal(false);
     resetForm();
     addToast({ message: `${entryTypeLabel(entryType)} added!`, type: "success" });
+  }
+
+  async function handleEditEntrySubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingEntry) return;
+    const amount = parseFloat(entryAmount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      addToast({ message: "Enter a valid amount", type: "error" });
+      return;
+    }
+    const payload = budgetFormToApiPayload(entryDesc, amount, entryType, entryCategory, entryDate);
+    const onServer = serverEntries.some((s) => s.id === editingEntry.id);
+    const onStore = budgetEntries.some((b) => b.id === editingEntry.id);
+    try {
+      if (onServer) {
+        await patchBudgetEntry(editingEntry.id, payload);
+        await refreshServerEntries();
+      }
+      if (onStore) {
+        updateBudgetEntry(editingEntry.id, {
+          description: entryDesc,
+          amount,
+          category: entryCategory,
+          date: entryDate,
+          type: entryType,
+        });
+      }
+    } catch {
+      addToast({ message: "Could not update entry on the server.", type: "error" });
+      return;
+    }
+    setShowEditModal(false);
+    setEditingEntry(null);
+    resetForm();
+    addToast({ message: "Entry updated", type: "success" });
   }
 
   async function handleExportServerCsv() {
@@ -762,9 +845,19 @@ export default function BudgetPage() {
                           >
                             {entry.type === "expense" ? "-" : "+"}${entry.amount.toFixed(2)}
                           </p>
-                          {/* Only show delete for store entries (not mock) */}
+                          {canEditBudgetEntry(entry) && (
+                            <button
+                              type="button"
+                              onClick={() => openEditEntry(entry)}
+                              className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-text-secondary hover:text-primary transition-colors cursor-pointer"
+                              aria-label="Edit entry"
+                            >
+                              <PencilIcon className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           {budgetEntries.some((e) => e.id === entry.id) && (
                             <button
+                              type="button"
                               onClick={() => {
                                 removeBudgetEntry(entry.id);
                                 addToast({ message: "Entry removed", type: "info" });
@@ -923,6 +1016,102 @@ export default function BudgetPage() {
               </Button>
               <Button type="submit" className="flex-1">
                 Add Entry
+              </Button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingEntry(null);
+            resetForm();
+          }}
+          title="Edit entry"
+        >
+          <form onSubmit={handleEditEntrySubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1.5">Description</label>
+              <input
+                type="text"
+                required
+                value={entryDesc}
+                onChange={(e) => setEntryDesc(e.target.value)}
+                className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">Amount</label>
+                <input
+                  type="number"
+                  required
+                  step="0.01"
+                  min="0.01"
+                  value={entryAmount}
+                  onChange={(e) => setEntryAmount(e.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">Type</label>
+                <select
+                  value={entryType}
+                  onChange={(e) => setEntryType(e.target.value as BudgetEntry["type"])}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                  <option value="gift">Gift Card</option>
+                  <option value="scholarship">Scholarship</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">Category</label>
+                <select
+                  value={entryCategory}
+                  onChange={(e) => setEntryCategory(e.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option>Food</option>
+                  <option>Transport</option>
+                  <option>Education</option>
+                  <option>Entertainment</option>
+                  <option>Income</option>
+                  <option>Scholarship</option>
+                  <option>Gift</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-text-secondary mb-1.5">Date</label>
+                <input
+                  type="date"
+                  required
+                  value={entryDate}
+                  onChange={(e) => setEntryDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingEntry(null);
+                  resetForm();
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1">
+                Save changes
               </Button>
             </div>
           </form>

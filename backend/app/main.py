@@ -44,7 +44,6 @@ app.include_router(career.router, prefix=settings.api_prefix)
 app.include_router(calendar.router, prefix=settings.api_prefix)
 app.include_router(budget.router, prefix=settings.api_prefix)
 app.include_router(approvals.router, prefix=settings.api_prefix)
-app.include_router(agents.router, prefix=settings.api_prefix)
 
 
 @app.get("/")

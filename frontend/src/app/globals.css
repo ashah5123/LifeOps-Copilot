@@ -1,6 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
+/* Class-based dark mode (html.dark) — required for Tailwind v4 dark: utilities */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* =========================================
    SPARKUP — LINEAR-INSPIRED DESIGN SYSTEM
    ========================================= */
@@ -50,6 +53,19 @@ html.light {
   --bd: #E4E4E7;
   --sb: #18181B;
   --sbh: #27272A;
+}
+
+/* Explicit dark theme (matches :root; keeps variables correct when class is ``dark``) */
+html.dark {
+  --bg: #09090B;
+  --fg: #FAFAFA;
+  --sf: #131316;
+  --sfh: #1C1C21;
+  --tp: #FAFAFA;
+  --ts: #A1A1AA;
+  --bd: rgba(255, 255, 255, 0.1);
+  --sb: #0C0C0E;
+  --sbh: #1A1A1F;
 }
 
 * {

@@ -21,10 +21,20 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  var theme = localStorage.getItem('sparkup-theme') || 'dark';
+                  var theme = 'dark';
+                  var raw = localStorage.getItem('sparkup-state');
+                  if (raw) {
+                    var s = JSON.parse(raw);
+                    if (s.theme === 'light' || s.theme === 'dark') theme = s.theme;
+                  } else {
+                    var t = localStorage.getItem('sparkup-theme');
+                    if (t === 'light' || t === 'dark') theme = t;
+                  }
                   document.documentElement.className = theme + ' h-full';
+                  document.documentElement.style.colorScheme = theme;
                 } catch(e) {
                   document.documentElement.className = 'dark h-full';
+                  document.documentElement.style.colorScheme = 'dark';
                 }
               })();
             `,

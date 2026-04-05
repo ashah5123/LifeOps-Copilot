@@ -29,31 +29,49 @@ import {
   listApplications,
   createApplication,
   applyFromJobListing,
+  optimizeResumeForAts,
 } from "@/lib/api";
-import { mockApplications, mockCareerSuggestions } from "@/lib/mock-data";
-import type { Application } from "@/types";
+import { htmlToPlainText } from "@/lib/html";
+import { mockCareerSuggestions } from "@/lib/mock-data";
+import type { Application, CareerSuggestion } from "@/types";
+
+function normalizeJobKey(s: string) {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 function mapApiApplication(row: Record<string, unknown>): Application {
   const statusRaw = String(row.status ?? "applied").toLowerCase();
   const statusMap: Record<string, Application["status"]> = {
+    saved: "saved",
     applied: "applied",
+    screening: "screening",
     interviewing: "interview",
     interview: "interview",
-    screening: "interview",
     offer: "offer",
     rejected: "rejected",
-    saved: "applied",
-    accepted: "offer",
+    accepted: "accepted",
   };
   const status = statusMap[statusRaw] ?? "applied";
+  const desc = row.job_description ? String(row.job_description) : "";
   return {
     id: String(row.id),
     company: String(row.company ?? ""),
     role: String(row.role ?? ""),
     status,
     appliedDate: String(row.applied_date ?? "").slice(0, 10) || "—",
+    deadline: row.deadline ? String(row.deadline).slice(0, 10) : undefined,
     notes: row.notes ? String(row.notes) : undefined,
-    url: row.job_url ? String(row.job_url) : undefined,
+    jobDescription: desc ? desc.slice(0, 4000) : undefined,
+    jobId: row.job_id != null && String(row.job_id).length > 0 ? String(row.job_id) : undefined,
+    url: row.job_url
+      ? String(row.job_url)
+      : row.apply_link
+        ? String(row.apply_link)
+        : row.url
+          ? String(row.url)
+          : row.link
+            ? String(row.link)
+            : undefined,
   };
 }
 
@@ -67,23 +85,21 @@ interface JobResult {
   salaryRange: string;
   posted: string;
   match: number;
-  source: "LinkedIn" | "Glassdoor" | "Google Jobs" | "Indeed";
+  /** ATS / board name from API (JSearch, Remotive, etc.) */
+  source: string;
   description: string;
   requirements: string[];
   qualifications: string[];
   companyInfo: string;
+  /** Employer apply URL from JSearch / scrapers (Workday, Greenhouse, etc.) */
+  applyLink?: string;
 }
 
 /* ── Job database by category ───────────────────────────────── */
 
-const sources: JobResult["source"][] = [
-  "LinkedIn",
-  "Glassdoor",
-  "Google Jobs",
-  "Indeed",
-];
+const sources: string[] = ["LinkedIn", "Glassdoor", "Google Jobs", "Indeed"];
 
-function pickSource(index: number): JobResult["source"] {
+function pickSource(index: number): string {
   return sources[index % sources.length];
 }
 
@@ -730,24 +746,43 @@ const statusVariant: Record<
   Application["status"],
   "info" | "warning" | "success" | "error"
 > = {
+  saved: "info",
   applied: "info",
+  screening: "warning",
   interview: "warning",
   offer: "success",
   rejected: "error",
+  accepted: "success",
 };
 
 const statusLabel: Record<Application["status"], string> = {
+  saved: "Saved",
   applied: "Applied",
+  screening: "Screening",
   interview: "Interview",
   offer: "Offer",
   rejected: "Rejected",
+  accepted: "Accepted",
 };
 
-const sourceBadgeColor: Record<JobResult["source"], string> = {
-  LinkedIn: "bg-blue-100 text-blue-700",
-  Glassdoor: "bg-green-100 text-green-700",
-  "Google Jobs": "bg-red-100 text-red-700",
-  Indeed: "bg-purple-100 text-purple-700",
+const PIPELINE_HIDE_APPLY: Application["status"][] = [
+  "applied",
+  "screening",
+  "interview",
+  "offer",
+  "accepted",
+];
+
+/** Below this match %, we run ATS optimization (Gemini/Vertex) before apply. */
+const ATS_BOOST_THRESHOLD = 30;
+
+const sourceBadgeColor: Record<string, string> = {
+  LinkedIn: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200",
+  Glassdoor: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-200",
+  "Google Jobs": "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-200",
+  Indeed: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-200",
+  Remotive: "bg-cyan-100 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200",
+  jsearch: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200",
 };
 
 /* ── Animations ─────────────────────────────────────────────── */
@@ -765,7 +800,9 @@ const item = {
 /* ── Component ──────────────────────────────────────────────── */
 
 export default function CareerPage() {
-  const [applications, setApplications] = useState<Application[]>(mockApplications);
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [appsLoading, setAppsLoading] = useState(true);
+  const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newAppCompany, setNewAppCompany] = useState("");
   const [newAppRole, setNewAppRole] = useState("");
@@ -773,18 +810,6 @@ export default function CareerPage() {
   const [newAppDeadline, setNewAppDeadline] = useState("");
   const [newAppNotes, setNewAppNotes] = useState("");
   const [filter, setFilter] = useState<Application["status"] | "all">("all");
-
-  useEffect(() => {
-    listApplications()
-      .then((rows) => {
-        if (rows.length) {
-          setApplications(rows.map((r) => mapApiApplication(r as Record<string, unknown>)));
-        }
-      })
-      .catch(() => {
-        /* keep mock */
-      });
-  }, []);
 
   // Job search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -800,6 +825,13 @@ export default function CareerPage() {
   const [applyTarget, setApplyTarget] = useState<JobResult | null>(null);
   const [applySubmitting, setApplySubmitting] = useState(false);
   const [applySuccess, setApplySuccess] = useState(false);
+  const [applyReviewStep, setApplyReviewStep] = useState<0 | 1>(1);
+  const [applyNeedsAtsBoost, setApplyNeedsAtsBoost] = useState(false);
+  const [atsOptimizing, setAtsOptimizing] = useState(false);
+  const [atsActivityLog, setAtsActivityLog] = useState<string[]>([]);
+  const [optimizedResumeDraft, setOptimizedResumeDraft] = useState("");
+  const [atsChangeSummary, setAtsChangeSummary] = useState("");
+  const [estimatedAtsPercent, setEstimatedAtsPercent] = useState<number | null>(null);
 
   // Resume upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -809,6 +841,19 @@ export default function CareerPage() {
   const resumeFile = useAppStore((s) => s.resumeFile);
   const setResumeFile = useAppStore((s) => s.setResumeFile);
   const user = useAppStore((s) => s.user);
+
+  useEffect(() => {
+    setAppsLoading(true);
+    listApplications()
+      .then((rows) => {
+        setApplications(rows.map((r) => mapApiApplication(r as Record<string, unknown>)));
+      })
+      .catch(() => {
+        setApplications([]);
+        addToast({ message: "Could not load applications from the server.", type: "error" });
+      })
+      .finally(() => setAppsLoading(false));
+  }, [addToast]);
 
   /* ── Derived ──────────────────────────────────────── */
 
@@ -820,21 +865,47 @@ export default function CareerPage() {
   const statusCounts = {
     all: applications.length,
     applied: applications.filter((a) => a.status === "applied").length,
+    screening: applications.filter((a) => a.status === "screening").length,
     interview: applications.filter((a) => a.status === "interview").length,
     offer: applications.filter((a) => a.status === "offer").length,
     rejected: applications.filter((a) => a.status === "rejected").length,
   };
 
+  const jobApplicationKeys = useMemo(() => {
+    const ids = new Set<string>();
+    const pairs = new Set<string>();
+    for (const a of applications) {
+      if (!PIPELINE_HIDE_APPLY.includes(a.status)) continue;
+      if (a.jobId) ids.add(a.jobId);
+      pairs.add(`${normalizeJobKey(a.company)}|${normalizeJobKey(a.role)}`);
+    }
+    return { ids, pairs };
+  }, [applications]);
+
+  function isJobAppliedInPipeline(job: JobResult) {
+    return (
+      jobApplicationKeys.ids.has(job.id) ||
+      jobApplicationKeys.pairs.has(`${normalizeJobKey(job.company)}|${normalizeJobKey(job.role)}`)
+    );
+  }
+
   /* ── Handlers ─────────────────────────────────────── */
 
-  async function handleSearch() {
-    if (!searchQuery.trim()) return;
+  async function handleSearch(overrideQuery?: string) {
+    const q = (overrideQuery !== undefined ? overrideQuery : searchQuery).trim();
+    if (!q) {
+      addToast({ message: "Enter a job keyword to search.", type: "info" });
+      return;
+    }
+    if (overrideQuery !== undefined) {
+      setSearchQuery(q);
+    }
     setSearchLoading(true);
     setShowResults(false);
     setExpandedJobId(null);
     try {
       // Call real backend API which fetches from Remotive + fallback
-      const results = await searchJobsApi(searchQuery);
+      const results = await searchJobsApi(q);
       // Map backend response to JobResult shape
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mapped: JobResult[] = results.map((j: Record<string, unknown>, idx: number) => {
@@ -851,6 +922,7 @@ export default function CareerPage() {
         const posted =
           String(j.posted_date || j.postedDate || j.job_posted_at_datetime_utc || "").slice(0, 10) ||
           new Date().toISOString().slice(0, 10);
+        const applyLink = String(j.apply_link || j.job_apply_link || j.url || "").trim();
         return {
           id: String(j.id || `job-${idx}`),
           company: String(j.company || j.employer_name || "Unknown"),
@@ -859,17 +931,21 @@ export default function CareerPage() {
           salaryRange,
           posted,
           match: typeof j.match_score === "number" ? j.match_score : 70 + Math.floor(Math.random() * 25),
-          source: (j.source as JobResult["source"]) || pickSource(idx),
-          description: String(j.description || j.job_description || ""),
+          source: String(j.source || pickSource(idx)),
+          description: htmlToPlainText(String(j.description || j.job_description || "")),
           requirements: skills.length ? skills : ["See job posting for details"],
           qualifications: ["Bachelor's degree or equivalent experience"],
           companyInfo: `${String(j.company || "")} — ${String(j.job_type || "Technology")}`,
+          applyLink: applyLink || undefined,
         };
       });
-      setJobResults(mapped.length > 0 ? mapped : getJobsForQuery(searchQuery));
+      setJobResults(mapped);
+      if (mapped.length === 0) {
+        addToast({ message: "No jobs returned for that search. Try different keywords.", type: "info" });
+      }
     } catch {
-      // Fallback to local mock data if backend is down
-      setJobResults(getJobsForQuery(searchQuery));
+      setJobResults([]);
+      addToast({ message: "Job search failed. Check that the API is running and RapidAPI key is set.", type: "error" });
     }
     setShowResults(true);
     setSearchLoading(false);
@@ -879,26 +955,114 @@ export default function CareerPage() {
     setExpandedJobId((prev) => (prev === jobId ? null : jobId));
   }
 
+  function handleCareerSuggestionAction(suggestion: CareerSuggestion) {
+    document.getElementById("career-job-search")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (suggestion.actionLabel === "View Plan") {
+      addToast({
+        message: "Use Job Search above to find roles; Add Application tracks them on your board.",
+        type: "info",
+      });
+      return;
+    }
+    if (suggestion.actionLabel === "View Role") {
+      void handleSearch("Amazon software development engineer intern");
+      addToast({ message: "Searching for roles matching that suggestion…", type: "info" });
+      return;
+    }
+    if (suggestion.actionLabel === "Edit Resume") {
+      fileInputRef.current?.click();
+      addToast({ message: "Choose a PDF, DOCX, or TXT resume file.", type: "info" });
+    }
+  }
+
+  async function runAtsOptimization(job: JobResult, baseResume: string) {
+    setAtsOptimizing(true);
+    const lines: string[] = [];
+    const stamp = () =>
+      new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const log = (msg: string) => {
+      lines.push(`${stamp()} — ${msg}`);
+      setAtsActivityLog([...lines]);
+    };
+    log("Reading job description and your resume");
+    await new Promise((r) => setTimeout(r, 400));
+    log("Extracting keywords for ATS alignment");
+    await new Promise((r) => setTimeout(r, 350));
+    try {
+      log("Calling AI to tailor your resume to this posting…");
+      const res = await optimizeResumeForAts({
+        job_description: htmlToPlainText(job.description),
+        resume_text: baseResume,
+        company: job.company,
+        role: job.role,
+      });
+      for (const step of res.transparency_steps ?? []) {
+        log(String(step));
+      }
+      setOptimizedResumeDraft((res.optimized_resume_text || baseResume).trim() || baseResume);
+      setEstimatedAtsPercent(
+        typeof res.estimated_ats_match_percent === "number" ? res.estimated_ats_match_percent : 90,
+      );
+      setAtsChangeSummary(res.change_summary || "");
+      log("Optimization complete — review the draft, edit if needed, then submit");
+    } catch {
+      log("AI service unavailable — edit your resume in the box below, then submit");
+      setOptimizedResumeDraft(baseResume);
+      setEstimatedAtsPercent(null);
+      setAtsChangeSummary("");
+    } finally {
+      setAtsOptimizing(false);
+      setApplyReviewStep(1);
+    }
+  }
+
   function handleApplyNow(job: JobResult) {
     if (!resumeFile) {
       addToast({ message: "Upload your resume first", type: "error" });
       return;
     }
+    const base = resumeFile.text ?? "";
+    const needBoost = job.match < ATS_BOOST_THRESHOLD;
     setApplyTarget(job);
     setApplySuccess(false);
     setApplySubmitting(false);
-    setApplyModalOpen(true);
+    setApplyNeedsAtsBoost(needBoost);
+    setAtsChangeSummary("");
+    setEstimatedAtsPercent(needBoost ? job.match : null);
+    setOptimizedResumeDraft(base);
+    setAtsActivityLog([]);
+    if (needBoost) {
+      setApplyReviewStep(0);
+      setApplyModalOpen(true);
+      void runAtsOptimization(job, base);
+    } else {
+      setApplyReviewStep(1);
+      setApplyModalOpen(true);
+    }
   }
 
   async function handleSubmitApplication() {
     if (!applyTarget) return;
     setApplySubmitting(true);
+    const resumeText =
+      applyNeedsAtsBoost && optimizedResumeDraft.trim()
+        ? optimizedResumeDraft.trim()
+        : resumeFile?.text ?? "";
+    const coverLetter =
+      applyNeedsAtsBoost && estimatedAtsPercent != null
+        ? `ATS-optimized package. Estimated match after rewrite: ${estimatedAtsPercent}%. ${atsChangeSummary}`.slice(
+            0,
+            4000,
+          )
+        : "";
     try {
       try {
         await applyFromJobListing(applyTarget.id, {
-          resume_text: resumeFile?.text ?? "",
-          cover_letter: "",
-          notes: "Submitted from SparkUp career search",
+          resume_text: resumeText,
+          cover_letter: coverLetter,
+          notes: applyNeedsAtsBoost
+            ? "Submitted from SparkUp — low match triggered ATS resume boost + user review"
+            : "Submitted from SparkUp career search",
         });
       } catch {
         await createApplication({
@@ -906,9 +1070,12 @@ export default function CareerPage() {
           role: applyTarget.role,
           status: "applied",
           applied_date: new Date().toISOString().slice(0, 10),
-          job_url: "",
-          job_description: applyTarget.description.slice(0, 2000),
-          notes: "Manual / mock job listing",
+          job_url: applyTarget.applyLink ?? "",
+          job_description: htmlToPlainText(applyTarget.description).slice(0, 2000),
+          notes: applyNeedsAtsBoost
+            ? "Manual apply — ATS-boosted resume text included in sync"
+            : "Manual / mock job listing",
+          job_id: applyTarget.id,
         });
       }
       const rows = await listApplications();
@@ -933,6 +1100,13 @@ export default function CareerPage() {
     }
     setApplyTarget(null);
     setApplySuccess(false);
+    setApplyReviewStep(1);
+    setApplyNeedsAtsBoost(false);
+    setAtsOptimizing(false);
+    setAtsActivityLog([]);
+    setOptimizedResumeDraft("");
+    setAtsChangeSummary("");
+    setEstimatedAtsPercent(null);
   }
 
   function handleResumeUpload(e: ChangeEvent<HTMLInputElement>) {
@@ -1007,7 +1181,8 @@ export default function CareerPage() {
         </div>
 
         {/* ── Job Search Section ──────────────────── */}
-        <Card padding="md" className="mb-6">
+        <div id="career-job-search" className="mb-6 scroll-mt-24">
+        <Card padding="md">
           <h2 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
             <MagnifyingGlassIcon className="w-4 h-4 text-primary" />
             Job Search by Interest
@@ -1022,7 +1197,7 @@ export default function CareerPage() {
               className="flex-1 px-4 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
             <Button
-              onClick={handleSearch}
+              onClick={() => void handleSearch()}
               loading={searchLoading}
               icon={
                 !searchLoading ? (
@@ -1046,6 +1221,7 @@ export default function CareerPage() {
               >
                 {jobResults.map((job) => {
                   const isExpanded = expandedJobId === job.id;
+                  const alreadyApplied = isJobAppliedInPipeline(job);
                   return (
                     <motion.div key={job.id} variants={item} layout>
                       <div className="border border-border/60 rounded-xl bg-background hover:shadow-md transition-shadow overflow-hidden">
@@ -1070,38 +1246,58 @@ export default function CareerPage() {
                             </div>
                           </div>
 
-                          <h3 className="text-sm font-semibold text-text-primary">
-                            {job.role}
-                          </h3>
+                          <div
+                            className="cursor-pointer rounded-lg -mx-1 px-1 py-0.5 hover:bg-surface-hover/50 transition-colors"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => toggleJobDetails(job.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                toggleJobDetails(job.id);
+                              }
+                            }}
+                          >
+                            <h3 className="text-sm font-semibold text-text-primary">
+                              {job.role}
+                            </h3>
 
-                          <p className="text-xs text-text-secondary flex items-center gap-1 mt-1">
-                            <BuildingOffice2Icon className="w-3 h-3" />
-                            {job.company}
-                          </p>
-                          <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5">
-                            <MapPinIcon className="w-3 h-3" />
-                            {job.location}
-                          </p>
-                          <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5">
-                            <CurrencyDollarIcon className="w-3 h-3" />
-                            {job.salaryRange}
-                          </p>
-                          <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5">
-                            <ClockIcon className="w-3 h-3" />
-                            Posted {job.posted}
-                          </p>
+                            <p className="text-xs text-text-secondary flex items-center gap-1 mt-1">
+                              <BuildingOffice2Icon className="w-3 h-3" />
+                              {job.company}
+                            </p>
+                            <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5">
+                              <MapPinIcon className="w-3 h-3" />
+                              {job.location}
+                            </p>
+                            <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5">
+                              <CurrencyDollarIcon className="w-3 h-3" />
+                              {job.salaryRange}
+                            </p>
+                            <p className="text-xs text-text-secondary flex items-center gap-1 mt-0.5">
+                              <ClockIcon className="w-3 h-3" />
+                              Posted {job.posted}
+                            </p>
 
-                          {/* Source badge */}
-                          <div className="mt-2">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${sourceBadgeColor[job.source]}`}
-                            >
-                              {job.source}
-                            </span>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                sourceBadgeColor[job.source] ??
+                                "bg-gray-100 text-gray-700 dark:bg-zinc-800 dark:text-zinc-300"
+                              }`}
+                              >
+                                {job.source}
+                              </span>
+                              {job.applyLink ? (
+                                <span className="text-[10px] text-text-secondary">
+                                  Click for full description · Apply on company site opens in a new tab
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
 
                           {/* Actions */}
-                          <div className="flex gap-2 mt-3">
+                          <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
                             <Button
                               size="sm"
                               variant="secondary"
@@ -1116,13 +1312,20 @@ export default function CareerPage() {
                             >
                               {isExpanded ? "Hide Details" : "View Details"}
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="accent"
-                              onClick={() => handleApplyNow(job)}
-                            >
-                              Apply Now
-                            </Button>
+                            {alreadyApplied ? (
+                              <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                                <CheckCircleIcon className="w-3.5 h-3.5" />
+                                Applied
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="accent"
+                                onClick={() => handleApplyNow(job)}
+                              >
+                                Apply Now
+                              </Button>
+                            )}
                           </div>
                         </div>
 
@@ -1142,9 +1345,20 @@ export default function CareerPage() {
                                   <h4 className="text-xs font-semibold text-text-primary mb-1">
                                     Job Description
                                   </h4>
-                                  <p className="text-xs text-text-secondary leading-relaxed">
-                                    {job.description}
+                                  <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">
+                                    {job.description || "No description returned — open the employer site below."}
                                   </p>
+                                  {job.applyLink ? (
+                                    <a
+                                      href={job.applyLink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                                    >
+                                      <ArrowTopRightOnSquareIcon className="w-4 h-4 shrink-0" />
+                                      Open original job posting to apply (Workday, Greenhouse, etc.)
+                                    </a>
+                                  ) : null}
                                 </div>
 
                                 {/* Requirements */}
@@ -1199,13 +1413,19 @@ export default function CareerPage() {
 
                                 {/* Bottom apply button */}
                                 <div className="pt-1">
-                                  <Button
-                                    size="sm"
-                                    variant="accent"
-                                    onClick={() => handleApplyNow(job)}
-                                  >
-                                    Apply Now
-                                  </Button>
+                                  {alreadyApplied ? (
+                                    <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                      You already have this role in your pipeline as Applied or later.
+                                    </p>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="accent"
+                                      onClick={() => handleApplyNow(job)}
+                                    >
+                                      Apply Now
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
                             </motion.div>
@@ -1218,7 +1438,13 @@ export default function CareerPage() {
               </motion.div>
             )}
           </AnimatePresence>
+          {showResults && !searchLoading && jobResults.length === 0 && (
+            <p className="mt-4 text-center text-sm text-text-secondary py-6">
+              No job listings for that search. Try other keywords, or confirm the backend can reach JSearch / Remotive.
+            </p>
+          )}
         </Card>
+        </div>
 
         {/* ── Main Grid ───────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -1227,7 +1453,7 @@ export default function CareerPage() {
             {/* Filter Tabs */}
             <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
               {(
-                ["all", "applied", "interview", "offer", "rejected"] as const
+                ["all", "applied", "screening", "interview", "offer", "rejected"] as const
               ).map((s) => (
                 <button
                   key={s}
@@ -1247,6 +1473,16 @@ export default function CareerPage() {
             </div>
 
             {/* Application Cards */}
+            {appsLoading ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                <div className="h-9 w-9 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-text-secondary">Loading applications…</p>
+              </div>
+            ) : filteredApps.length === 0 ? (
+              <p className="text-sm text-text-secondary py-12 text-center rounded-2xl border border-dashed border-border bg-background/50">
+                No applications yet. Use <strong className="text-text-primary">Add Application</strong> or apply from job search results.
+              </p>
+            ) : (
             <motion.div
               variants={container}
               initial="hidden"
@@ -1255,59 +1491,111 @@ export default function CareerPage() {
             >
               {filteredApps.map((app) => (
                 <motion.div key={app.id} variants={item}>
-                  <Card hover padding="md">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-4">
-                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center flex-shrink-0">
-                          <span className="text-lg font-bold text-text-secondary">
-                            {app.company[0]}
-                          </span>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-semibold text-text-primary">
-                            {app.role}
-                          </h3>
-                          <p className="text-sm text-text-secondary">
-                            {app.company}
-                          </p>
-                          <div className="flex items-center gap-3 mt-2">
-                            <Badge variant={statusVariant[app.status]}>
-                              {statusLabel[app.status]}
-                            </Badge>
-                            <span className="text-xs text-text-secondary">
-                              Applied{" "}
-                              {new Date(app.appliedDate).toLocaleDateString(
-                                "en-US",
-                                { month: "short", day: "numeric" }
-                              )}
+                  <Card hover padding="md" className="overflow-hidden">
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        className="flex-1 min-w-0 text-left cursor-pointer rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                        onClick={() =>
+                          setExpandedAppId((id) => (id === app.id ? null : app.id))
+                        }
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-zinc-800 dark:to-zinc-700 flex items-center justify-center flex-shrink-0">
+                            <span className="text-lg font-bold text-text-secondary">
+                              {app.company[0]}
                             </span>
-                            {app.deadline && (
-                              <span className="text-xs text-error font-medium">
-                                Due{" "}
-                                {new Date(app.deadline).toLocaleDateString(
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-semibold text-text-primary">
+                              {app.role}
+                            </h3>
+                            <p className="text-sm text-text-secondary">
+                              {app.company}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-3 mt-2">
+                              <Badge variant={statusVariant[app.status]}>
+                                {statusLabel[app.status]}
+                              </Badge>
+                              <span className="text-xs text-text-secondary">
+                                Applied{" "}
+                                {new Date(app.appliedDate).toLocaleDateString(
                                   "en-US",
                                   { month: "short", day: "numeric" }
                                 )}
                               </span>
+                              {app.deadline && (
+                                <span className="text-xs text-error font-medium">
+                                  Due{" "}
+                                  {new Date(app.deadline).toLocaleDateString(
+                                    "en-US",
+                                    { month: "short", day: "numeric" }
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                            {app.notes && (
+                              <p className="text-xs text-text-secondary mt-2 italic">
+                                {app.notes}
+                              </p>
                             )}
-                          </div>
-                          {app.notes && (
-                            <p className="text-xs text-text-secondary mt-2 italic">
-                              {app.notes}
+                            <p className="text-[11px] text-text-secondary mt-2">
+                              {expandedAppId === app.id ? "Click to collapse" : "Click for job description · use ↗ to open the original posting"}
                             </p>
-                          )}
+                          </div>
                         </div>
-                      </div>
-                      {app.url && (
-                        <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+                      </button>
+                      {app.url ? (
+                        <a
+                          href={app.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors inline-flex shrink-0 self-start"
+                          aria-label={`Open original posting: ${app.company}`}
+                          title="Open original job posting in a new tab"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <ArrowTopRightOnSquareIcon className="w-4 h-4 text-text-secondary" />
-                        </button>
-                      )}
+                        </a>
+                      ) : null}
                     </div>
+                    <AnimatePresence initial={false}>
+                      {expandedAppId === app.id && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="mt-4 pt-4 border-t border-border/50 space-y-3">
+                            <h4 className="text-xs font-semibold text-text-primary uppercase tracking-wide">
+                              Job description
+                            </h4>
+                            <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">
+                              {app.jobDescription?.trim() ||
+                                "No description stored for this application. Open the original posting if available."}
+                            </p>
+                            {app.url ? (
+                              <a
+                                href={app.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                              >
+                                <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                                Apply on employer site (new tab)
+                              </a>
+                            ) : null}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </Card>
                 </motion.div>
               ))}
             </motion.div>
+            )}
           </div>
 
           {/* ── Right Sidebar ─────────────────────── */}
@@ -1404,7 +1692,12 @@ export default function CareerPage() {
                       <p className="text-xs text-text-secondary mb-3 leading-relaxed">
                         {suggestion.description}
                       </p>
-                      <Button variant="ghost" size="sm">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        onClick={() => handleCareerSuggestionAction(suggestion)}
+                      >
                         {suggestion.actionLabel}
                       </Button>
                     </Card>
@@ -1496,9 +1789,12 @@ export default function CareerPage() {
                   onChange={(e) => setNewAppStatus(e.target.value as Application["status"])}
                   className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 >
+                  <option value="saved">Saved</option>
                   <option value="applied">Applied</option>
+                  <option value="screening">Screening</option>
                   <option value="interview">Interview</option>
                   <option value="offer">Offer</option>
+                  <option value="accepted">Accepted</option>
                   <option value="rejected">Rejected</option>
                 </select>
               </div>
@@ -1546,7 +1842,13 @@ export default function CareerPage() {
         <Modal
           isOpen={applyModalOpen}
           onClose={closeApplyModal}
-          title="Auto-Apply Preview"
+          title={
+            applySuccess
+              ? "Application sent"
+              : applyNeedsAtsBoost && applyReviewStep === 0
+                ? "Tailoring your resume (live)"
+                : "Review & submit application"
+          }
         >
           <div className="space-y-4">
             {applySuccess ? (
@@ -1576,25 +1878,64 @@ export default function CareerPage() {
                 </p>
                 <Button onClick={closeApplyModal}>Done</Button>
               </motion.div>
+            ) : applyNeedsAtsBoost && applyReviewStep === 0 ? (
+              <div className="space-y-3">
+                <p className="text-xs text-text-secondary">
+                  Match was under {ATS_BOOST_THRESHOLD}%, so we&apos;re aligning your resume to this posting before
+                  you review and submit. Activity updates appear below.
+                </p>
+                <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-background/80 p-3 font-mono text-[11px] text-text-secondary space-y-1">
+                  {atsActivityLog.map((line, i) => (
+                    <p key={i}>{line}</p>
+                  ))}
+                  {atsOptimizing ? (
+                    <p className="text-primary animate-pulse">Working…</p>
+                  ) : null}
+                </div>
+                <Button variant="secondary" onClick={closeApplyModal} className="w-full">
+                  Cancel
+                </Button>
+              </div>
             ) : (
               /* Pre-fill form */
               <>
                 <p className="text-sm text-text-secondary leading-relaxed">
-                  Review your application details before submitting. SparkUp has
-                  pre-filled the information from your profile and resume.
+                  {applyNeedsAtsBoost
+                    ? "Your resume was tuned for ATS keyword overlap with this job. Edit the draft if you want, then submit."
+                    : "Review your application details before submitting. SparkUp has pre-filled the information from your profile and resume."}
                 </p>
 
                 {/* Target job */}
                 {applyTarget && (
                   <div className="bg-background rounded-xl border border-border p-3">
-                    <p className="text-sm font-semibold text-text-primary">
-                      {applyTarget.role}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-text-primary">{applyTarget.role}</p>
+                      {applyNeedsAtsBoost && estimatedAtsPercent != null ? (
+                        <Badge variant="success">Est. ATS fit ~{estimatedAtsPercent}%</Badge>
+                      ) : null}
+                    </div>
                     <p className="text-xs text-text-secondary">
                       {applyTarget.company} &middot; {applyTarget.location}
                     </p>
+                    {applyNeedsAtsBoost && atsChangeSummary ? (
+                      <p className="text-xs text-text-secondary mt-2 leading-relaxed">{atsChangeSummary}</p>
+                    ) : null}
                   </div>
                 )}
+
+                {applyNeedsAtsBoost ? (
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">
+                      Resume text we will send (editable)
+                    </label>
+                    <textarea
+                      value={optimizedResumeDraft}
+                      onChange={(e) => setOptimizedResumeDraft(e.target.value)}
+                      rows={10}
+                      className="w-full px-3 py-2 bg-background border border-border rounded-xl text-xs text-text-primary font-mono leading-relaxed resize-y min-h-[160px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                ) : null}
 
                 {/* Pre-filled fields */}
                 <div className="space-y-3">
@@ -1606,7 +1947,7 @@ export default function CareerPage() {
                       type="text"
                       readOnly
                       value={user?.name ?? "Your Name"}
-                      className="w-full px-3 py-2 bg-gray-50 border border-border rounded-xl text-sm text-text-primary"
+                      className="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-border rounded-xl text-sm text-text-primary"
                     />
                   </div>
                   <div>
@@ -1617,14 +1958,14 @@ export default function CareerPage() {
                       type="text"
                       readOnly
                       value={user?.email ?? "your@email.com"}
-                      className="w-full px-3 py-2 bg-gray-50 border border-border rounded-xl text-sm text-text-primary"
+                      className="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-border rounded-xl text-sm text-text-primary"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-text-secondary mb-1">
-                      Resume
+                      Resume file
                     </label>
-                    <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-border rounded-xl">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-border rounded-xl">
                       <DocumentTextIcon className="w-4 h-4 text-green-600" />
                       <span className="text-sm text-text-primary">
                         {resumeFile?.name ?? "No resume"}
@@ -1644,12 +1985,10 @@ export default function CareerPage() {
                   </Button>
                   <Button
                     onClick={handleSubmitApplication}
-                    loading={applySubmitting}
+                    loading={applySubmitting || atsOptimizing}
                     className="flex-1"
                   >
-                    {applySubmitting
-                      ? "Submitting..."
-                      : "Submit Application"}
+                    {applySubmitting ? "Submitting..." : "Submit application"}
                   </Button>
                 </div>
               </>

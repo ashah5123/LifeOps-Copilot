@@ -36,3 +36,14 @@ class FirestoreService:
                 items.pop(i)
                 return True
         return False
+
+    def upsert(self, collection: str, doc_id: str, data: dict[str, Any]) -> dict[str, Any]:
+        """Insert or replace a document keyed by ``id`` (singleton rows e.g. OAuth tokens)."""
+        items = self.mock_db.setdefault(collection, [])
+        merged = {**data, "id": doc_id}
+        for i, item in enumerate(items):
+            if item.get("id") == doc_id:
+                items[i] = {**item, **merged}
+                return items[i]
+        items.append(merged)
+        return merged

@@ -1,5 +1,6 @@
 """Career routes — job analysis, resume tailoring, application tracking, job search."""
 
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -53,6 +54,7 @@ class ApplicationPayload(BaseModel):
     cover_letter: str = ""
     follow_up_date: str | None = None
     match_score: int = 0
+    job_id: str | None = None
 
 
 # ------------------------------------------------------------------
@@ -138,13 +140,118 @@ def generate_cover_letter(payload: JobAnalysisPayload) -> dict[str, str]:
     }
 
 
+def _strip_html_for_prompt(text: str) -> str:
+    if not text:
+        return ""
+    s = re.sub(r"<script[\s\S]*?</script>", " ", text, flags=re.I)
+    s = re.sub(r"<style[\s\S]*?</style>", " ", s, flags=re.I)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+class AtsOptimizePayload(BaseModel):
+    job_description: str
+    resume_text: str = ""
+    company: str = ""
+    role: str = ""
+
+
+@router.post("/ats-optimize-resume")
+def ats_optimize_resume(payload: AtsOptimizePayload) -> dict:
+    """Rewrite resume text for ATS alignment with a specific job (Gemini / Vertex when configured)."""
+    jd_plain = _strip_html_for_prompt(payload.job_description)[:8000]
+    resume = (payload.resume_text or "")[:12000]
+    role = payload.role or "this role"
+    company = payload.company or "the employer"
+
+    transparency_steps = [
+        "Parsed job description (HTML stripped for analysis).",
+        f"Scoped keywords for {role} at {company}.",
+        "Rewrote resume bullets for ATS keyword overlap and clear impact metrics.",
+    ]
+
+    prompt = (
+        "You are an expert ATS (applicant tracking system) resume coach.\n"
+        "Rewrite the candidate resume as plain text so it scores highly for THIS job.\n"
+        "Return ONLY valid JSON with keys:\n"
+        "- optimized_resume_text (string, full resume plain text, no markdown)\n"
+        "- estimated_ats_match_percent (integer 0-100, realistic but aim for strong fit)\n"
+        "- change_summary (string, 2-4 sentences)\n"
+        "- keywords_added (array of up to 15 short strings)\n\n"
+        f"Job title: {role}\nCompany: {company}\n\n"
+        f"Job description:\n{jd_plain}\n\n"
+        f"Current resume:\n{resume}\n"
+    )
+
+    if vertex_service.is_live:
+        data = vertex_service.generate_json(
+            prompt,
+            "Respond with JSON only. No markdown fences.",
+        )
+        if "raw" in data or "optimized_resume_text" not in data:
+            data = {
+                "optimized_resume_text": _mock_optimized_resume(resume, role, company),
+                "estimated_ats_match_percent": 90,
+                "change_summary": "Used fallback template; Vertex returned non-JSON.",
+                "keywords_added": ["communication", "attention to detail", "quality"],
+            }
+    else:
+        data = {
+            "optimized_resume_text": _mock_optimized_resume(resume, role, company),
+            "estimated_ats_match_percent": 90,
+            "change_summary": (
+                f"Demo mode (no Vertex): prepended an ATS summary block aligned to {role}. "
+                "Enable GCP + Vertex for a real Gemini rewrite."
+            ),
+            "keywords_added": _extract_simple_keywords(jd_plain),
+        }
+
+    return {
+        "optimized_resume_text": str(data.get("optimized_resume_text", resume)),
+        "estimated_ats_match_percent": int(data.get("estimated_ats_match_percent", 88)),
+        "change_summary": str(data.get("change_summary", "")),
+        "keywords_added": data.get("keywords_added") if isinstance(data.get("keywords_added"), list) else [],
+        "transparency_steps": transparency_steps,
+    }
+
+
+def _mock_optimized_resume(resume: str, role: str, company: str) -> str:
+    header = (
+        f"[ATS-OPTIMIZED SUMMARY FOR {role.upper()} — {company}]\n"
+        "Aligned phrasing with posting keywords | Quantified outcomes where possible.\n\n"
+    )
+    return header + (resume or "[No resume text provided — paste your resume and try again.]")
+
+
+def _extract_simple_keywords(jd: str) -> list[str]:
+    words = re.findall(r"[A-Za-z][A-Za-z+.#]{2,}", jd.lower())
+    stop = {
+        "the", "and", "for", "with", "you", "your", "our", "are", "will", "this", "that", "from", "have",
+        "has", "been", "any", "all", "not", "can", "may", "must", "work", "team", "job", "role",
+    }
+    freq: dict[str, int] = {}
+    for w in words:
+        if w in stop or len(w) < 4:
+            continue
+        freq[w] = freq.get(w, 0) + 1
+    top = sorted(freq.keys(), key=lambda k: freq[k], reverse=True)[:12]
+    return top
+
+
 # ------------------------------------------------------------------
 # Application CRUD
 # ------------------------------------------------------------------
 
 @router.post("/applications")
 def create_application(payload: ApplicationPayload) -> dict:
-    record = {"id": str(uuid4()), **payload.model_dump()}
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    record = {
+        "id": str(uuid4()),
+        **payload.model_dump(),
+        "created_at": now,
+        "updated_at": now,
+    }
     firestore_service.create("applications", record)
     return record
 
@@ -162,7 +269,12 @@ def get_application(application_id: str) -> dict:
 
 @router.patch("/applications/{application_id}")
 def update_application(application_id: str, payload: ApplicationPayload) -> dict:
-    updated = firestore_service.update("applications", application_id, payload.model_dump())
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    updated = firestore_service.update(
+        "applications",
+        application_id,
+        {**payload.model_dump(), "updated_at": now},
+    )
     return updated or {"id": application_id, "status": "not-found"}
 
 
@@ -462,6 +574,9 @@ def apply_from_job(job_id: str, payload: ApplyFromJobPayload) -> dict:
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
 
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    ms = job.get("match_score")
+    match_score = int(ms) if isinstance(ms, (int, float)) else 0
     record = {
         "id": str(uuid4()),
         "job_id": job_id,
@@ -484,7 +599,9 @@ def apply_from_job(job_id: str, payload: ApplyFromJobPayload) -> dict:
         "resume_version": "",
         "cover_letter": payload.cover_letter,
         "follow_up_date": None,
-        "match_score": 0,
+        "match_score": match_score,
+        "created_at": now,
+        "updated_at": now,
     }
     firestore_service.create("applications", record)
     return record

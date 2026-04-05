@@ -15,9 +15,14 @@ import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
 import ConnectGmailButton from "@/components/inbox/ConnectGmailButton";
 import { useAppStore } from "@/lib/store";
-import { getGmailMessages, sendGmailReply, processInboxMessage, draftInboxReply } from "@/lib/api";
-import { decodeHtmlEntities } from "@/lib/html";
-import { mockGmailMessages } from "@/lib/mock-data";
+import {
+  getGmailMessages,
+  getGmailMessageDetail,
+  sendGmailReply,
+  processInboxMessage,
+  draftInboxReply,
+} from "@/lib/api";
+import { htmlToPlainText } from "@/lib/html";
 import type { GmailMessage } from "@/types";
 
 function splitSender(from: string): { display: string; email: string } {
@@ -29,6 +34,13 @@ function splitSender(from: string): { display: string; email: string } {
   }
   if (from.includes("@")) return { display: from.split("@")[0], email: from.trim() };
   return { display: from || "Unknown", email: "unknown@local" };
+}
+
+function internalDateToIso(raw: string | undefined): string {
+  if (!raw) return new Date().toISOString();
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n)) return new Date().toISOString();
+  return new Date(n).toISOString();
 }
 
 function formatTime(timestamp: string) {
@@ -74,10 +86,10 @@ function EmailListItem({
           <span className="text-xs text-text-secondary whitespace-nowrap">{formatTime(message.timestamp)}</span>
         </div>
         <p className={`text-sm truncate ${message.isUnread ? "font-medium text-text-primary" : "text-text-secondary"}`}>
-          {decodeHtmlEntities(message.subject)}
+          {htmlToPlainText(message.subject)}
         </p>
         <p className="text-xs text-text-secondary truncate mt-0.5">
-          {decodeHtmlEntities(message.preview)}
+          {htmlToPlainText(message.preview)}
         </p>
       </div>
     </motion.div>
@@ -98,7 +110,7 @@ function EmailDetailPanel({
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const addToast = useAppStore((s) => s.addToast);
 
-  const contentForAi = decodeHtmlEntities(
+  const contentForAi = htmlToPlainText(
     message.body || message.preview || message.subject || "",
   );
 
@@ -117,7 +129,7 @@ function EmailDetailPanel({
         const summaryText =
           (fields?.summary as string) ||
           `${message.sender} sent a message. Review and respond as needed.`;
-        setAiSummary(decodeHtmlEntities(summaryText));
+        setAiSummary(htmlToPlainText(summaryText));
         const action = result.result as Record<string, unknown> | undefined;
         let nextDraft = (action?.draftReply as string | undefined)?.trim() || "";
         if (!nextDraft && contentForAi.trim()) {
@@ -147,7 +159,7 @@ function EmailDetailPanel({
     try {
       await sendGmailReply({
         toEmail: message.senderEmail,
-        subject: `Re: ${decodeHtmlEntities(message.subject)}`,
+        subject: `Re: ${htmlToPlainText(message.subject)}`,
         body: draft,
         threadId: message.threadId || undefined,
         inReplyToMessageId: message.rfc822MessageId || undefined,
@@ -190,7 +202,7 @@ function EmailDetailPanel({
         {/* Email Header */}
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-text-primary">
-            {decodeHtmlEntities(message.subject)}
+            {htmlToPlainText(message.subject)}
           </h2>
           <div className="flex items-center gap-2 mt-1">
             <p className="text-sm text-text-secondary">
@@ -205,7 +217,7 @@ function EmailDetailPanel({
         <Card padding="md" className="mb-4 flex-shrink-0">
           <p className="text-xs font-medium text-text-secondary mb-2 uppercase tracking-wider">Original Email</p>
           <div className="text-sm text-text-primary whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
-            {decodeHtmlEntities(message.body)}
+            {htmlToPlainText(message.body)}
           </div>
         </Card>
 
@@ -216,7 +228,7 @@ function EmailDetailPanel({
             <p className="text-xs font-medium text-primary uppercase tracking-wider">AI Summary</p>
           </div>
           <p className="text-sm text-text-primary leading-relaxed">
-            {aiSummary ? decodeHtmlEntities(aiSummary) : "Analyzing email..."}
+            {aiSummary ? htmlToPlainText(aiSummary) : "Analyzing email..."}
           </p>
           <div className="flex flex-wrap gap-1.5 mt-2">
             <Badge variant="info">Requires Response</Badge>
@@ -274,7 +286,7 @@ function EmailDetailPanel({
           <div>
             <p className="text-xs text-text-secondary mb-1">Subject:</p>
             <p className="text-sm font-medium text-text-primary">
-              Re: {decodeHtmlEntities(message.subject)}
+              Re: {htmlToPlainText(message.subject)}
             </p>
           </div>
           <div className="bg-background rounded-xl p-4 border border-border/50">
@@ -298,8 +310,10 @@ function EmailDetailPanel({
 export default function InboxPage() {
   const gmailConnected = useAppStore((s) => s.gmailConnected);
   const setGmailConnected = useAppStore((s) => s.setGmailConnected);
+  const addToast = useAppStore((s) => s.addToast);
   const [selectedMessage, setSelectedMessage] = useState<GmailMessage | null>(null);
-  const [messages, setMessages] = useState<GmailMessage[]>(mockGmailMessages);
+  const [messages, setMessages] = useState<GmailMessage[]>([]);
+  const [inboxLoading, setInboxLoading] = useState(false);
 
   // Check for OAuth callback and load messages
   useEffect(() => {
@@ -310,40 +324,92 @@ export default function InboxPage() {
     }
   }, [setGmailConnected]);
 
-  // Fetch messages from backend when connected
+  // Fetch messages from backend when connected — no mock list; show loading until loaded
   useEffect(() => {
-    if (gmailConnected) {
-      getGmailMessages()
-        .then((backendMessages) => {
-          // Backend returns { id, sender, subject, snippet } — map to frontend GmailMessage shape
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const mapped: GmailMessage[] = (backendMessages as unknown[]).map((raw) => {
-            const m = raw as Record<string, unknown>;
-            const from = String(m.sender || "Unknown");
-            const { display, email } = splitSender(from);
-            const unread =
-              typeof m.isUnread === "boolean" ? m.isUnread : m.isUnread !== "false";
-            return {
-              id: String(m.id || `msg-${Math.random()}`),
-              threadId: String(m.threadId || m.id || ""),
-              sender: display,
-              senderEmail: email,
-              subject: String(m.subject || "(no subject)"),
-              preview: String(m.snippet || m.preview || ""),
-              body: String(m.body || m.snippet || m.preview || ""),
-              timestamp: String(m.internalDate || m.timestamp || new Date().toISOString()),
-              isUnread: Boolean(unread),
-              labels: Array.isArray(m.labels) ? (m.labels as string[]) : [],
-              rfc822MessageId: m.rfc822MessageId ? String(m.rfc822MessageId) : undefined,
-            };
-          });
-          if (mapped.length > 0) setMessages(mapped);
-        })
-        .catch(() => {
-          // Keep mock data on failure
-        });
+    if (!gmailConnected) {
+      setMessages([]);
+      setInboxLoading(false);
+      setSelectedMessage(null);
+      return;
     }
-  }, [gmailConnected]);
+    setInboxLoading(true);
+    setMessages([]);
+    getGmailMessages()
+      .then((backendMessages) => {
+        const mapped: GmailMessage[] = (backendMessages as unknown[]).map((raw) => {
+          const m = raw as Record<string, unknown>;
+          const from = String(m.sender || "Unknown");
+          const { display, email } = splitSender(from);
+          const unread =
+            typeof m.isUnread === "boolean" ? m.isUnread : m.isUnread !== "false";
+          return {
+            id: String(m.id || `msg-${Math.random()}`),
+            threadId: String(m.threadId || m.id || ""),
+            sender: display,
+            senderEmail: email,
+            subject: String(m.subject || "(no subject)"),
+            preview: String(m.snippet || m.preview || ""),
+            body: String(m.body || m.snippet || m.preview || ""),
+            timestamp: m.internalDate
+              ? internalDateToIso(String(m.internalDate))
+              : String(m.timestamp || new Date().toISOString()),
+            isUnread: Boolean(unread),
+            labels: Array.isArray(m.labels) ? (m.labels as string[]) : [],
+            rfc822MessageId: m.rfc822MessageId ? String(m.rfc822MessageId) : undefined,
+          };
+        });
+        setMessages(mapped);
+      })
+      .catch(() => {
+        setMessages([]);
+        addToast({ message: "Could not load messages. Check the API and Gmail connection.", type: "error" });
+      })
+      .finally(() => setInboxLoading(false));
+  }, [gmailConnected, addToast]);
+
+  // Load full MIME-decoded body when a message is selected (live or mock Gmail from API).
+  useEffect(() => {
+    if (!gmailConnected || !selectedMessage) return;
+    const id = selectedMessage.id;
+    let cancelled = false;
+    void getGmailMessageDetail(id)
+      .then((d) => {
+        if (cancelled) return;
+        const fromApiBody = typeof d.body === "string" ? d.body : undefined;
+        const ts =
+          typeof d.internalDate === "string" ? internalDateToIso(d.internalDate) : undefined;
+        const rfc = d.rfc822MessageId != null ? String(d.rfc822MessageId) : undefined;
+        const tid = d.threadId != null ? String(d.threadId) : undefined;
+        setSelectedMessage((prev) => {
+          if (prev?.id !== id) return prev;
+          return {
+            ...prev,
+            body: fromApiBody ?? prev.body,
+            timestamp: ts ?? prev.timestamp,
+            rfc822MessageId: rfc ?? prev.rfc822MessageId,
+            threadId: tid ?? prev.threadId,
+          };
+        });
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== id) return m;
+            return {
+              ...m,
+              body: fromApiBody ?? m.body,
+              timestamp: ts ?? m.timestamp,
+              rfc822MessageId: rfc ?? m.rfc822MessageId,
+              threadId: tid ?? m.threadId,
+            };
+          }),
+        );
+      })
+      .catch(() => {
+        /* keep list/snippet as body */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gmailConnected, selectedMessage?.id]);
 
   return (
     <AppShell>
@@ -352,7 +418,11 @@ export default function InboxPage() {
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Inbox</h1>
             <p className="text-sm text-text-secondary mt-0.5">
-              {gmailConnected ? `${messages.length} messages` : "Connect your Gmail to get started"}
+              {gmailConnected
+                ? inboxLoading
+                  ? "Loading messages…"
+                  : `${messages.length} message${messages.length === 1 ? "" : "s"}`
+                : "Connect your Gmail to get started"}
             </p>
           </div>
           {gmailConnected && (
@@ -376,7 +446,18 @@ export default function InboxPage() {
                   className={`md:col-span-2 bg-surface rounded-2xl border border-border/50 overflow-hidden ${selectedMessage ? "hidden md:block" : ""}`}
                 >
                   <div className="overflow-y-auto h-full">
-                    {messages.map((msg) => (
+                    {inboxLoading ? (
+                      <div className="flex flex-col items-center justify-center gap-3 py-16 px-4 text-center">
+                        <div className="h-9 w-9 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        <p className="text-sm text-text-secondary">Loading mail…</p>
+                      </div>
+                    ) : messages.length === 0 ? (
+                      <div className="py-16 px-4 text-center text-sm text-text-secondary">
+                        No messages in this mailbox yet.
+                      </div>
+                    ) : null}
+                    {!inboxLoading &&
+                      messages.map((msg) => (
                       <EmailListItem
                         key={msg.id}
                         message={msg}

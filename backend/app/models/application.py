@@ -20,3 +20,6 @@ class Application(BaseModel):
     cover_letter: str = ""
     follow_up_date: str | None = None
     match_score: int = 0
+    job_id: str | None = None
+    created_at: str = ""
+    updated_at: str = ""

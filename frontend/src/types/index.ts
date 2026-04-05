@@ -69,11 +69,23 @@ export interface Application {
   id: string;
   company: string;
   role: string;
-  status: "applied" | "interview" | "offer" | "rejected";
+  status:
+    | "saved"
+    | "applied"
+    | "screening"
+    | "interview"
+    | "offer"
+    | "rejected"
+    | "accepted";
   appliedDate: string;
   deadline?: string;
   notes?: string;
+  /** Original posting URL (Workday, Greenhouse, company site, etc.) */
   url?: string;
+  /** Full or excerpted job description from API */
+  jobDescription?: string;
+  /** Listing id from job search when application is tied to a search result */
+  jobId?: string;
 }
 
 export interface CareerSuggestion {

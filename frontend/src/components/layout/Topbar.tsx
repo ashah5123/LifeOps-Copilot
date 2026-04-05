@@ -14,6 +14,8 @@ import {
 import { useAppStore } from "@/lib/store";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { getGmailMessages, listCalendarEvents, getUpcomingDeadlines } from "@/lib/api";
+import type { GmailMessage } from "@/types";
 
 const searchablePages = [
   { label: "Dashboard", href: "/dashboard", keywords: ["home", "overview", "dashboard"] },
@@ -25,8 +27,19 @@ const searchablePages = [
   { label: "Settings", href: "/settings", keywords: ["settings", "preferences", "theme", "config"] },
 ];
 
+function formatRelativeTime(ms: number): string {
+  const diff = Date.now() - ms;
+  const s = Math.floor(diff / 1000);
+  if (s < 45) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 86400 * 7) return `${Math.floor(s / 86400)}d ago`;
+  return new Date(ms).toLocaleDateString();
+}
+
 export default function Topbar() {
-  const { theme, toggleTheme, user, logout, notifications, markAllRead } = useAppStore();
+  const { theme, toggleTheme, user, logout, notifications, markAllRead, isAuthenticated, setNotifications } =
+    useAppStore();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -58,6 +71,90 @@ export default function Topbar() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+
+    async function refreshLiveNotifications() {
+      const next: { id: string; text: string; time: string; unread: boolean }[] = [];
+
+      try {
+        const raw = (await getGmailMessages()) as unknown as GmailMessage[] | Record<string, unknown>[];
+        const msgs = Array.isArray(raw) ? raw : [];
+        for (const m of msgs.slice(0, 6)) {
+          const row = m as Record<string, unknown>;
+          const id = String(row.id ?? "");
+          const subj = String(row.subject ?? "Email");
+          const snip = String(row.snippet ?? row.preview ?? "").slice(0, 120);
+          const internal = row.internalDate != null ? Number(row.internalDate) : NaN;
+          const t = Number.isFinite(internal) ? formatRelativeTime(internal) : "recent";
+          const unread = row.isUnread === true || row.unread === true;
+          next.push({
+            id: `gmail-${id}`,
+            text: snip ? `${subj}: ${snip}` : subj,
+            time: t,
+            unread,
+          });
+        }
+      } catch {
+        /* inbox optional */
+      }
+
+      try {
+        const events = (await listCalendarEvents()) as Record<string, unknown>[];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const horizon = new Date(today);
+        horizon.setDate(horizon.getDate() + 14);
+        for (const ev of events) {
+          const dateStr = String(ev.date ?? "").slice(0, 10);
+          if (!dateStr) continue;
+          const d = new Date(dateStr + "T12:00:00");
+          if (d < today || d > horizon) continue;
+          const title = String(ev.title ?? "Event");
+          const time = String(ev.time ?? ev.start_time ?? "").slice(0, 5) || "—";
+          next.push({
+            id: `cal-${ev.id}`,
+            text: `Calendar: ${title} on ${dateStr} at ${time}`,
+            time: dateStr,
+            unread: true,
+          });
+        }
+      } catch {
+        /* calendar optional */
+      }
+
+      try {
+        const dl = (await getUpcomingDeadlines(14)) as {
+          deadlines?: Record<string, unknown>[];
+        };
+        const list = dl?.deadlines ?? [];
+        for (const d of list.slice(0, 4)) {
+          const due = String(d.dueDate ?? d.due_date ?? "").slice(0, 10);
+          next.push({
+            id: `dl-${String(d.id ?? due + String(d.title ?? ""))}`,
+            text: `Deadline: ${String(d.title ?? "Due soon")}${due ? ` (${due})` : ""}`,
+            time: due || "upcoming",
+            unread: true,
+          });
+        }
+      } catch {
+        /* deadlines optional */
+      }
+
+      if (!cancelled) {
+        setNotifications(next.slice(0, 14));
+      }
+    }
+
+    void refreshLiveNotifications();
+    const interval = setInterval(refreshLiveNotifications, 120000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isAuthenticated, setNotifications]);
 
   const handleLogout = () => {
     logout();
@@ -144,6 +241,11 @@ export default function Topbar() {
                     <h3 className="text-sm font-semibold text-text-primary">Notifications</h3>
                   </div>
                   <div className="max-h-72 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="text-sm text-text-secondary px-4 py-8 text-center">
+                        No live alerts yet. Connect Gmail in Settings, or add calendar events and deadlines.
+                      </p>
+                    ) : null}
                     {notifications.map((notif) => (
                       <div
                         key={notif.id}

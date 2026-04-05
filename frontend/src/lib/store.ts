@@ -34,6 +34,8 @@ export interface AgentFeedItem {
 interface PersistedState {
   isAuthenticated: boolean;
   user: UserProfile | null;
+  /** JWT from email/password auth (sent as Bearer on API calls when persisted). */
+  authToken: string | null;
   gmailConnected: boolean;
   theme: "light" | "dark";
   resumeFile: ResumeFile | null;
@@ -77,12 +79,6 @@ export interface Notification {
   unread: boolean;
 }
 
-const defaultNotifications: Notification[] = [
-  { id: "1", text: "Prof. Martinez replied to your email", time: "30m ago", unread: true },
-  { id: "2", text: "Google phone screen scheduled for Tuesday", time: "2h ago", unread: true },
-  { id: "3", text: "Budget alert: Food spending above average", time: "5h ago", unread: false },
-  { id: "4", text: "Scholarship deadline in 3 days", time: "1d ago", unread: false },
-];
 
 interface AppState {
   sidebarOpen: boolean;
@@ -94,8 +90,11 @@ interface AppState {
 
   isAuthenticated: boolean;
   user: UserProfile | null;
-  login: (user: UserProfile, remember?: boolean) => void;
+  authToken: string | null;
+  login: (user: UserProfile, remember?: boolean, authToken?: string | null) => void;
   logout: () => void;
+  /** Clear JWT session only (keeps theme, budget entries, etc.). */
+  clearAuthSession: () => void;
 
   toasts: Toast[];
   addToast: (toast: Omit<Toast, "id">) => void;
@@ -114,10 +113,12 @@ interface AppState {
   setMonthlyBudget: (v: number) => void;
   budgetEntries: BudgetEntry[];
   addBudgetEntry: (e: BudgetEntry) => void;
+  updateBudgetEntry: (id: string, patch: Partial<BudgetEntry>) => void;
   removeBudgetEntry: (id: string) => void;
 
   // Notifications
   notifications: Notification[];
+  setNotifications: (items: Notification[]) => void;
   markAllRead: () => void;
   addNotification: (n: Omit<Notification, "id">) => void;
 
@@ -142,15 +143,25 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   isAuthenticated: persisted.isAuthenticated ?? false,
   user: persisted.user ?? null,
-  login: (user, remember = true) => {
-    set({ isAuthenticated: true, user });
+  authToken: persisted.authToken ?? null,
+  login: (user, remember = true, authToken = null) => {
+    set({ isAuthenticated: true, user, authToken });
     if (remember) {
-      saveState({ ...extractPersisted(get()), isAuthenticated: true, user });
+      saveState(extractPersisted(get()));
     }
   },
   logout: () => {
-    set({ isAuthenticated: false, user: null, gmailConnected: false });
+    set({ isAuthenticated: false, user: null, gmailConnected: false, authToken: null });
     if (typeof window !== "undefined") localStorage.removeItem("sparkup-state");
+  },
+  clearAuthSession: () => {
+    set({ isAuthenticated: false, user: null, authToken: null });
+    saveState({
+      ...extractPersisted(get()),
+      isAuthenticated: false,
+      user: null,
+      authToken: null,
+    });
   },
 
   toasts: [],
@@ -174,7 +185,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           /* ignore */
         }
       }
-      saveState({ ...extractPersisted(get()), theme: newTheme });
+      const merged = { ...s, theme: newTheme } as AppState;
+      saveState(extractPersisted(merged));
       return { theme: newTheme };
     }),
   initTheme: () => {
@@ -209,6 +221,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ budgetEntries: entries });
     saveState({ ...extractPersisted(get()), budgetEntries: entries });
   },
+  updateBudgetEntry: (id, patch) => {
+    const entries = get().budgetEntries.map((e) => (e.id === id ? { ...e, ...patch } : e));
+    set({ budgetEntries: entries });
+    saveState({ ...extractPersisted(get()), budgetEntries: entries });
+  },
   removeBudgetEntry: (id) => {
     const entries = get().budgetEntries.filter((e) => e.id !== id);
     set({ budgetEntries: entries });
@@ -216,7 +233,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // Notifications
-  notifications: persisted.notifications ?? defaultNotifications,
+  notifications: persisted.notifications ?? [],
+  setNotifications: (items) => {
+    set({ notifications: items });
+    saveState({ ...extractPersisted(get()), notifications: items });
+  },
   markAllRead: () => {
     const updated = get().notifications.map((n) => ({ ...n, unread: false }));
     set({ notifications: updated });
@@ -246,6 +267,7 @@ function extractPersisted(s: AppState): PersistedState {
   return {
     isAuthenticated: s.isAuthenticated,
     user: s.user,
+    authToken: s.authToken,
     gmailConnected: s.gmailConnected,
     theme: s.theme,
     resumeFile: s.resumeFile,

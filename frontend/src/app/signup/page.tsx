@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SparklesIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { useAppStore } from "@/lib/store";
+import { authRegister } from "@/lib/api";
 
 export default function SignupPage() {
   const [name, setName] = useState("");
@@ -17,6 +18,7 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const router = useRouter();
   const addToast = useAppStore((s) => s.addToast);
+  const login = useAppStore((s) => s.login);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,11 +34,34 @@ export default function SignupPage() {
     }
 
     setLoading(true);
-    // Simulate signup
-    await new Promise((r) => setTimeout(r, 1500));
+    try {
+      const res = await authRegister({
+        email: email.trim(),
+        password,
+        name: name.trim(),
+      });
+      const displayName = res.user.name || res.user.email.split("@")[0];
+      const initials = displayName
+        .split(/\s+/)
+        .map((p) => p[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+      login(
+        {
+          name: displayName,
+          email: res.user.email,
+          initials: initials || displayName.slice(0, 2).toUpperCase(),
+        },
+        true,
+        res.token,
+      );
+      addToast({ message: "Account created — you're signed in.", type: "success" });
+      router.push("/dashboard");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sign up failed");
+    }
     setLoading(false);
-    addToast({ message: "Account created! Please log in.", type: "success" });
-    router.push("/login");
   };
 
   return (

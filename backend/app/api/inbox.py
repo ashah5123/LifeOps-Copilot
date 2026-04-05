@@ -1,6 +1,8 @@
 """Inbox routes — process emails, list Gmail messages, send with approval."""
 
-from fastapi import APIRouter
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.core.dependencies import agent_runner, gmail_service
@@ -84,13 +86,22 @@ def get_inbox_actions() -> list[dict[str, str]]:
 # ------------------------------------------------------------------
 
 @router.get("/gmail/messages")
-def list_gmail_messages() -> list[dict[str, str]]:
+def list_gmail_messages() -> list[dict[str, Any]]:
     """Return recent message summaries.
 
     If Gmail is connected, returns real messages.
     Otherwise returns mock/demo data.
     """
     return gmail_service.list_messages()
+
+
+@router.get("/gmail/messages/{message_id}")
+def get_gmail_message(message_id: str) -> dict[str, object]:
+    """Return one message with full MIME body (plain text or HTML stripped)."""
+    out = gmail_service.get_message(message_id)
+    if not out:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return out
 
 
 # ------------------------------------------------------------------

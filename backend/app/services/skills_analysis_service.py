@@ -170,36 +170,55 @@ class SkillsAnalysisService:
         if not self.db:
             return {"user_id": user_id, "snapshots": [], "improvements": []}
 
+        tracked = [
+            s for s in self.db.list_collection("skills_tracking")
+            if s.get("user_id") == user_id
+        ]
+        tracked_sorted = sorted(tracked, key=lambda s: s.get("date_acquired", ""))
+
         snapshots = [
             s for s in self.db.list_collection("skill_snapshots")
             if s.get("user_id") == user_id
         ]
         snapshots_sorted = sorted(snapshots, key=lambda s: s.get("recorded_at", ""))
 
+        out: dict = {
+            "user_id": user_id,
+            "skills_tracking": tracked_sorted,
+            "skills_tracked_count": len(tracked_sorted),
+            "skills_tracked_names": sorted(
+                {str(s.get("skill_name", "")).lower() for s in tracked_sorted if s.get("skill_name")}
+            ),
+        }
+
         if len(snapshots_sorted) < 2:
-            return {
-                "user_id": user_id,
-                "snapshots": snapshots_sorted,
-                "improvements": [],
-                "message": "Need at least 2 snapshots to track improvements.",
-            }
+            out.update(
+                {
+                    "snapshots": snapshots_sorted,
+                    "improvements": [],
+                    "message": "Need at least 2 snapshots to diff over time; skills_tracking list is still available.",
+                }
+            )
+            return out
 
         first = set(snapshots_sorted[0].get("skills", []))
         latest = set(snapshots_sorted[-1].get("skills", []))
         newly_added = sorted(latest - first)
         dropped = sorted(first - latest)
 
-        return {
-            "user_id": user_id,
-            "first_snapshot": snapshots_sorted[0].get("recorded_at"),
-            "latest_snapshot": snapshots_sorted[-1].get("recorded_at"),
-            "skills_then": sorted(first),
-            "skills_now": sorted(latest),
-            "newly_added": newly_added,
-            "dropped": dropped,
-            "net_gain": len(newly_added) - len(dropped),
-            "snapshots_count": len(snapshots_sorted),
-        }
+        out.update(
+            {
+                "first_snapshot": snapshots_sorted[0].get("recorded_at"),
+                "latest_snapshot": snapshots_sorted[-1].get("recorded_at"),
+                "skills_then": sorted(first),
+                "skills_now": sorted(latest),
+                "newly_added": newly_added,
+                "dropped": dropped,
+                "net_gain": len(newly_added) - len(dropped),
+                "snapshots_count": len(snapshots_sorted),
+            }
+        )
+        return out
 
     # ------------------------------------------------------------------
     # suggest_certifications

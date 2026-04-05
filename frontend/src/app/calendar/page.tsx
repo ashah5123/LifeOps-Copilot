@@ -249,6 +249,17 @@ export default function CalendarPage() {
     setNewDescription("");
   };
 
+  const openAddAtTimeSlot = (day: Date, hour: number) => {
+    const dd = formatDateKey(day);
+    const sh = `${String(hour).padStart(2, "0")}:00`;
+    const eh = Math.min(hour + 1, 23);
+    const en = `${String(eh).padStart(2, "0")}:00`;
+    setNewDate(dd);
+    setNewStartTime(sh);
+    setNewEndTime(en);
+    setShowAddModal(true);
+  };
+
   const suggestedSlots = useMemo(() => [...mockAISuggestedSlots, ...apiSlots], [apiSlots]);
 
   const handleAddEvent = async (e: React.FormEvent) => {
@@ -354,6 +365,27 @@ export default function CalendarPage() {
           </div>
         </div>
 
+        <Card padding="sm" className="mb-4 border border-primary/20 bg-primary/5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-text-primary">Google Calendar</p>
+              <p className="text-xs text-text-secondary mt-0.5 max-w-xl">
+                SparkUp keeps your schedule in the app. Use the button to open Google Calendar alongside it. True
+                two-way sync needs the Google Calendar API (extra OAuth scope); that can be added next to pull events
+                into this grid automatically.
+              </p>
+            </div>
+            <a
+              href="https://calendar.google.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 inline-flex items-center justify-center rounded-xl border border-border bg-background px-3 py-2 text-xs font-medium text-primary hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
+            >
+              Open Google Calendar
+            </a>
+          </div>
+        </Card>
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Weekly Calendar */}
           <div className="lg:col-span-3">
@@ -428,12 +460,22 @@ export default function CalendarPage() {
                         key={day.toISOString()}
                         className="relative border-l border-border/30"
                       >
+                        {hours.map((hour) => (
+                          <button
+                            key={`${formatDateKey(day)}-${hour}`}
+                            type="button"
+                            className="absolute left-0 right-0 z-0 border-t border-transparent hover:bg-primary/[0.08] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/35 transition-colors cursor-pointer"
+                            style={{ top: (hour - 7) * 64, height: 64 }}
+                            aria-label={`Add event on ${formatDateKey(day)} at ${hour}:00`}
+                            onClick={() => openAddAtTimeSlot(day, hour)}
+                          />
+                        ))}
                         {dayEvents.map((event) => (
                           <motion.div
                             key={event.id}
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
-                            className="absolute left-0.5 right-0.5 rounded-lg px-1.5 py-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                            className="absolute z-10 left-0.5 right-0.5 rounded-lg px-1.5 py-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
                             style={{
                               top: getEventTop(event.startTime),
                               height: getEventHeight(

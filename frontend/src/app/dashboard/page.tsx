@@ -66,29 +66,25 @@ export default function DashboardPage() {
         label: "Emails to Reply",
         value: summary.emailsNeedingReply,
         icon: EnvelopeIcon,
-        color: "text-blue-600",
-        bg: "bg-blue-100",
+        gradient: "from-sky-500 to-blue-600",
       },
       {
         label: "Upcoming Deadlines",
         value: summary.deadlines,
         icon: ClockIcon,
-        color: "text-red-600",
-        bg: "bg-red-100",
+        gradient: "from-rose-500 to-red-600",
       },
       {
         label: "Tasks Today",
         value: summary.tasksToday,
         icon: CheckCircleIcon,
-        color: "text-green-600",
-        bg: "bg-green-100",
+        gradient: "from-emerald-500 to-teal-600",
       },
       {
         label: "Budget Alerts",
         value: summary.budgetAlerts,
         icon: ExclamationTriangleIcon,
-        color: "text-amber-600",
-        bg: "bg-amber-100",
+        gradient: "from-amber-500 to-orange-600",
       },
     ],
     [summary],
@@ -165,8 +161,10 @@ export default function DashboardPage() {
             <motion.div key={card.label} variants={item}>
               <Card hover padding="sm">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl ${card.bg} flex items-center justify-center`}>
-                    <card.icon className={`w-5 h-5 ${card.color}`} />
+                  <div
+                    className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.gradient} flex items-center justify-center shadow-md shadow-black/10`}
+                  >
+                    <card.icon className="w-5 h-5 text-white drop-shadow-sm" />
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-text-primary">{card.value}</p>

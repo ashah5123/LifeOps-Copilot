@@ -7,20 +7,40 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export { API_BASE };
 
+function authHeaders(): HeadersInit {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem("sparkup-state");
+    if (!raw) return {};
+    const tok = (JSON.parse(raw) as { authToken?: string | null }).authToken;
+    if (tok) return { Authorization: `Bearer ${tok}` };
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
   const res = await fetch(url, {
+    ...options,
     headers: {
       "Content-Type": "application/json",
+      ...authHeaders(),
       ...options?.headers,
     },
-    ...options,
   });
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    const detail = (error as { detail?: string }).detail;
-    throw new Error(typeof detail === "string" ? detail : `API Error: ${res.status}`);
+    const detail = (error as { detail?: string | unknown }).detail;
+    const msg =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? (detail as { msg?: string }[]).map((e) => e.msg || JSON.stringify(e)).join("; ")
+          : `API Error: ${res.status}`;
+    throw new Error(msg);
   }
 
   if (res.status === 204) {
@@ -71,9 +91,37 @@ export const uploadFile = (file: File) => uploadForm("/api/uploads", file);
 export const getGoogleLoginUrl = () =>
   request<{ authUrl: string }>("/api/auth/google/login");
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: AuthUser;
+}
+
+export const authRegister = (body: { email: string; password: string; name?: string }) =>
+  request<AuthResponse>("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const authLogin = (body: { email: string; password: string }) =>
+  request<AuthResponse>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const authMe = () => request<AuthUser>("/api/auth/me");
+
 // --- Inbox ---
 export const getGmailMessages = () =>
   request<import("@/types").GmailMessage[]>("/api/inbox/gmail/messages");
+
+export const getGmailMessageDetail = (messageId: string) =>
+  request<Record<string, unknown>>(`/api/inbox/gmail/messages/${encodeURIComponent(messageId)}`);
 
 export const sendGmailReply = (payload: {
   toEmail: string;
@@ -262,6 +310,24 @@ export const applyFromJobListing = (jobId: string, payload?: Record<string, unkn
       body: JSON.stringify(payload ?? { resume_text: "", cover_letter: "", notes: "" }),
     }
   );
+
+/** ATS-focused resume rewrite for a specific job (Vertex/Gemini when configured). */
+export const optimizeResumeForAts = (body: {
+  job_description: string;
+  resume_text: string;
+  company?: string;
+  role?: string;
+}) =>
+  request<{
+    optimized_resume_text: string;
+    estimated_ats_match_percent: number;
+    change_summary: string;
+    keywords_added: string[];
+    transparency_steps: string[];
+  }>("/api/career/ats-optimize-resume", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 
 /** Free API job search (no RapidAPI). */
 export const searchJobsFree = (query: string) =>

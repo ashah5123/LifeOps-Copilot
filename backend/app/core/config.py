@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Resolve backend/.env regardless of where uvicorn was started (repo root vs backend/).
@@ -40,6 +41,19 @@ class Settings(BaseSettings):
 
     # Frontend URL for OAuth redirect
     frontend_url: str = "http://localhost:3000"
+
+    # Comma-separated browser origins (add your Cloud Run / custom domain URLs)
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
+    )
+
+    @property
+    def allowed_cors_origins(self) -> frozenset[str]:
+        parts = [p.strip() for p in self.cors_origins.split(",") if p.strip()]
+        # Always include the frontend_url so Cloud Run deployments work automatically
+        if self.frontend_url:
+            parts.append(self.frontend_url.rstrip("/"))
+        return frozenset(parts) if parts else frozenset({"http://localhost:3000"})
 
     @property
     def is_gcp_configured(self) -> bool:

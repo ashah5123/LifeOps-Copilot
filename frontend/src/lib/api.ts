@@ -117,6 +117,18 @@ export const authLogin = (body: { email: string; password: string }) =>
 
 export const authMe = () => request<AuthUser>("/api/auth/me");
 
+export const authForgotPassword = (email: string) =>
+  request<{ message: string; token: string }>("/api/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+
+export const authResetPassword = (body: { email: string; token: string; new_password: string }) =>
+  request<{ message: string }>("/api/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
 // --- Inbox ---
 export const getGmailConnectionStatus = () =>
   request<{ connected: boolean; oauthConfigured: boolean }>("/api/inbox/gmail/status");

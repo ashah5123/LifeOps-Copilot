@@ -1,32 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-@import "tailwindcss";
 
-/* Class-based dark mode (html.dark) — required for Tailwind v4 dark: utilities */
-@custom-variant dark (&:where(.dark, .dark *));
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* =========================================
    SPARKUP — LINEAR-INSPIRED DESIGN SYSTEM
    ========================================= */
-
-@theme inline {
-  --color-background: var(--bg);
-  --color-foreground: var(--fg);
-  --color-surface: var(--sf);
-  --color-surface-hover: var(--sfh);
-  --color-primary: #5E6AD2;
-  --color-primary-hover: #7C85E0;
-  --color-accent: #F5A524;
-  --color-text-primary: var(--tp);
-  --color-text-secondary: var(--ts);
-  --color-success: #22C55E;
-  --color-warning: #F59E0B;
-  --color-error: #EF4444;
-  --color-border: var(--bd);
-  --color-sidebar: var(--sb);
-  --color-sidebar-hover: var(--sbh);
-  --color-sidebar-active: #5E6AD2;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-}
 
 /* ===== DARK MODE (DEFAULT) ===== */
 :root {

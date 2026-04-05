@@ -451,13 +451,17 @@ class ApplyFromJobPayload(BaseModel):
 # ------------------------------------------------------------------
 
 @router.post("/jobs/search")
-def search_jobs(payload: JobSearchPayload) -> dict:
-    """Search jobs via JSearch API with optional filters."""
+async def search_jobs(payload: JobSearchPayload) -> dict:
+    """Search jobs via JSearch API with Remotive fallback."""
     jobs = job_scraper_service.search_jobs(
         query=payload.query,
         location=payload.location,
         num_pages=payload.num_pages,
     )
+    # Filter out demo jobs and fall back to free Remotive API
+    jobs = [j for j in jobs if j.get("source") != "demo"]
+    if not jobs:
+        jobs = await job_search_service.search_jobs(payload.query, limit=12)
     if payload.filters:
         jobs = job_scraper_service.filter_jobs(jobs, payload.filters)
     return {"jobs": jobs, "count": len(jobs), "query": payload.query}
@@ -479,16 +483,20 @@ def get_saved_jobs() -> list[dict]:
 # ------------------------------------------------------------------
 
 @router.get("/jobs/trending")
-def get_trending_jobs() -> dict:
+async def get_trending_jobs() -> dict:
     """Return popular recent jobs (searches common roles and merges results)."""
     trending_queries = ["software engineer", "data scientist", "product manager"]
     seen: set[str] = set()
     jobs: list[dict] = []
     for q in trending_queries:
         results = job_scraper_service.search_jobs(query=q, num_pages=1)
-        for j in results:
-            if j["id"] not in seen:
-                seen.add(j["id"])
+        real = [j for j in results if j.get("source") != "demo"]
+        if not real:
+            real = await job_search_service.search_jobs(q, limit=5)
+        for j in real:
+            jid = j.get("id", "")
+            if jid not in seen:
+                seen.add(jid)
                 jobs.append(j)
     return {"jobs": jobs[:10], "count": len(jobs[:10])}
 

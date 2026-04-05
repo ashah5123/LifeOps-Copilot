@@ -22,11 +22,18 @@ class JobSearchService:
         """Fetch from Remotive API — free, no key needed."""
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:
+                # Remotive works best with single keyword; try full query then first word
                 resp = await client.get(REMOTIVE_API, params={"search": query, "limit": limit})
                 resp.raise_for_status()
                 data = resp.json()
+                raw_jobs = data.get("jobs", [])
+                if not raw_jobs and " " in query:
+                    resp = await client.get(REMOTIVE_API, params={"search": query.split()[0], "limit": limit})
+                    resp.raise_for_status()
+                    data = resp.json()
+                    raw_jobs = data.get("jobs", [])
 
-            raw_jobs = data.get("jobs", [])[:limit]
+            raw_jobs = raw_jobs[:limit]
             return [
                 {
                     "id": str(j.get("id", idx)),

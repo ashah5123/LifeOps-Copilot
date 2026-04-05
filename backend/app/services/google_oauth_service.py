@@ -21,9 +21,12 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 SCOPES = (
+    "openid email profile "
     "https://www.googleapis.com/auth/gmail.readonly "
     "https://www.googleapis.com/auth/gmail.send"
 )
+
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 OAUTH_COLLECTION = "oauth_tokens"
 OAUTH_DOC_ID = "google_oauth_default"
@@ -118,6 +121,59 @@ class GoogleOAuthService:
             }
 
     def get_stored_access_token(self) -> str | None:
-        """Return the most recent access token if one exists."""
-        token = self._cache.get("current", {}).get("access_token")
+        """Return the most recent access token, refreshing if a refresh_token exists."""
+        current = self._cache.get("current", {})
+        token = current.get("access_token")
+        if not token or token.startswith("demo-"):
+            return token or None
+
+        # Try refreshing if we have a refresh_token — access tokens expire in 1 hour
+        refresh = current.get("refresh_token")
+        if refresh and settings.is_oauth_configured:
+            try:
+                resp = httpx.post(
+                    GOOGLE_TOKEN_URL,
+                    data={
+                        "client_id": settings.google_client_id,
+                        "client_secret": settings.google_client_secret,
+                        "refresh_token": refresh,
+                        "grant_type": "refresh_token",
+                    },
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    new_token = data.get("access_token", "")
+                    if new_token:
+                        tokens = {
+                            "access_token": new_token,
+                            "refresh_token": refresh,
+                            "scope": data.get("scope", current.get("scope", "")),
+                        }
+                        self._persist(tokens)
+                        return new_token
+            except Exception as exc:
+                logger.debug("Token refresh failed (will use existing): %s", exc)
+
         return token or None
+
+    def get_user_info(self, access_token: str) -> dict[str, str]:
+        """Fetch the authenticated user's Google profile (email, name, picture)."""
+        if access_token.startswith("demo-"):
+            return {"email": "demo@gmail.com", "name": "Demo User", "picture": ""}
+        try:
+            resp = httpx.get(
+                GOOGLE_USERINFO_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "email": data.get("email", ""),
+                "name": data.get("name", ""),
+                "picture": data.get("picture", ""),
+            }
+        except Exception as exc:
+            logger.error("Failed to fetch user info: %s", exc)
+            return {"email": "", "name": "", "picture": ""}

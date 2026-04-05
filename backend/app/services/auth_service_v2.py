@@ -7,7 +7,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from passlib.hash import bcrypt
+from passlib.context import CryptContext
+
+_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=False)
 
 from app.services.database_service import DatabaseService
 
@@ -33,7 +35,7 @@ class AuthServiceV2:
         if not name:
             name = email.split("@")[0].replace(".", " ").title()
 
-        password_hash = bcrypt.hash(password)
+        password_hash = _pwd.hash(password[:72])
         user = self._db.create_user(email=email, name=name, password_hash=password_hash)
         token = self._create_token(user["id"], user["email"])
 
@@ -48,7 +50,7 @@ class AuthServiceV2:
         if not user:
             raise ValueError("Invalid email or password")
 
-        if not bcrypt.verify(password, user["password_hash"]):
+        if not _pwd.verify(password[:72], user["password_hash"]):
             raise ValueError("Invalid email or password")
 
         token = self._create_token(user["id"], user["email"])

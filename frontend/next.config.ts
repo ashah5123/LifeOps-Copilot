@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   devIndicators: {
     position: "bottom-right",
   },
+  /** Enable standalone output for Docker deployment */
+  output: "standalone",
 };
 
 export default nextConfig;

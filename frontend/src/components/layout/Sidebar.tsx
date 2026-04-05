@@ -41,7 +41,7 @@ export default function Sidebar() {
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center shadow-lg shadow-primary/20">
             <SparklesIcon className="w-5 h-5 text-white" />
           </div>
-          <span className="text-lg font-bold text-white tracking-tight">SparkUp</span>
+          <span className="text-xl font-bold text-white tracking-tight">LifeOps</span>
         </div>
 
         {/* Navigation */}
@@ -113,9 +113,8 @@ export default function Sidebar() {
 
             return (
               <Link key={item.href} href={item.href}>
-                <div className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors ${
-                  isActive ? "text-primary" : "text-white/50"
-                }`}>
+                <div className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition-colors ${isActive ? "text-primary" : "text-white/50"
+                  }`}>
                   <Icon className="w-5 h-5" />
                   <span className="text-[10px] font-medium">{item.label}</span>
                 </div>

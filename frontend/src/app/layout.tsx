@@ -3,7 +3,7 @@ import "./globals.css";
 import ToastWrapper from "@/components/ui/ToastWrapper";
 
 export const metadata: Metadata = {
-  title: "SparkUp — AI-Powered Student Productivity",
+  title: "LifeOps — AI-Powered Student Productivity",
   description: "Manage your inbox, career, calendar, and budget with AI assistance.",
 };
 

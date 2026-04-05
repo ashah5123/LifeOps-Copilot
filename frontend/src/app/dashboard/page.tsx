@@ -298,17 +298,25 @@ const item = {
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
 };
 
+<<<<<<< HEAD
 function getMSTGreeting(): string {
   const utc = new Date();
   const mstHour = new Date(utc.toLocaleString("en-US", { timeZone: "America/Phoenix" })).getHours();
   if (mstHour < 12) return "Good morning";
   if (mstHour < 17) return "Good afternoon";
+=======
+function getTimeBasedGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 18) return "Good afternoon";
+>>>>>>> 7a240aea4d846856099e35e71a9d933d3f616372
   return "Good evening";
 }
 
 export default function DashboardPage() {
   const user = useAppStore((s) => s.user);
   const displayName = user?.name || "there";
+<<<<<<< HEAD
   const [greeting, setGreeting] = useState("Hello");
   const [quoteIndex, setQuoteIndex] = useState(0);
 
@@ -327,13 +335,21 @@ export default function DashboardPage() {
   }, []);
 
   const currentQuote = allQuotes[quoteIndex];
+=======
+  const greeting = getTimeBasedGreeting();
+>>>>>>> 7a240aea4d846856099e35e71a9d933d3f616372
 
   return (
     <AppShell>
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Header */}
+<<<<<<< HEAD
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <h1 className="text-2xl md:text-3xl font-bold text-text-primary tracking-tight">
+=======
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold text-text-primary">
+>>>>>>> 7a240aea4d846856099e35e71a9d933d3f616372
             {greeting}, {displayName}
           </h1>
           <p className="text-sm text-text-secondary mt-1">

@@ -54,7 +54,7 @@ export default function Topbar() {
   const unreadCount = notifications.filter((n) => n.unread).length;
   const initials = user?.initials || "V";
   const displayName = user?.name || "Vidhi";
-  const displayEmail = user?.email || "vidhi@sparkup.ai";
+  const displayEmail = user?.email || "vidhi@lifeops.ai";
 
   // Filter search results
   const searchResults = searchQuery.trim().length > 0

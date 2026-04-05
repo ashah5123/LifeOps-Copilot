@@ -1,39 +1,19 @@
+"""Inbox routes — process emails, list Gmail messages, send with approval."""
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.core.dependencies import agent_runner
-from app.services.gmail_service import GmailService
+from app.core.dependencies import agent_runner, gmail_service
 
 router = APIRouter(prefix="/inbox", tags=["inbox"])
-gmail_service = GmailService()
 
+
+# ------------------------------------------------------------------
+# Request models
+# ------------------------------------------------------------------
 
 class InboxPayload(BaseModel):
     content: str
-
-
-@router.post("/process")
-def process_inbox(payload: InboxPayload) -> dict[str, object]:
-    return agent_runner.process(payload.content)
-
-
-@router.post("/draft-reply")
-def draft_reply(payload: InboxPayload) -> dict[str, str]:
-    return {
-        "subject": "Re: Your request",
-        "draft": f"Hello, here is a suggested reply based on: {payload.content[:120]}"
-    }
-
-
-@router.get("/actions")
-def get_inbox_actions() -> list[dict[str, str]]:
-    return [
-        {
-            "id": "inbox-1",
-            "title": "Reply to professor",
-            "detail": "Draft waiting for approval."
-        }
-    ]
 
 
 class GmailSendPayload(BaseModel):
@@ -42,15 +22,73 @@ class GmailSendPayload(BaseModel):
     body: str
 
 
+# ------------------------------------------------------------------
+# POST /api/inbox/process
+# ------------------------------------------------------------------
+
+@router.post("/process")
+def process_inbox(payload: InboxPayload) -> dict[str, object]:
+    """Run raw text/email content through the full agent pipeline.
+
+    Works in both Gmail-connected and manual-paste mode.
+    """
+    return agent_runner.process(payload.content)
+
+
+# ------------------------------------------------------------------
+# POST /api/inbox/draft-reply  (existing helper endpoint)
+# ------------------------------------------------------------------
+
+@router.post("/draft-reply")
+def draft_reply(payload: InboxPayload) -> dict[str, str]:
+    return {
+        "subject": "Re: Your request",
+        "draft": f"Hello, here is a suggested reply based on: {payload.content[:120]}",
+    }
+
+
+# ------------------------------------------------------------------
+# GET /api/inbox/actions  (existing helper endpoint)
+# ------------------------------------------------------------------
+
+@router.get("/actions")
+def get_inbox_actions() -> list[dict[str, str]]:
+    return [
+        {
+            "id": "inbox-1",
+            "title": "Reply to professor",
+            "detail": "Draft waiting for approval.",
+        }
+    ]
+
+
+# ------------------------------------------------------------------
+# GET /api/inbox/gmail/messages
+# ------------------------------------------------------------------
+
 @router.get("/gmail/messages")
 def list_gmail_messages() -> list[dict[str, str]]:
+    """Return recent message summaries.
+
+    If Gmail is connected, returns real messages.
+    Otherwise returns mock/demo data.
+    """
     return gmail_service.list_messages()
 
 
+# ------------------------------------------------------------------
+# POST /api/inbox/gmail/send
+# ------------------------------------------------------------------
+
 @router.post("/gmail/send")
 def send_gmail_message(payload: GmailSendPayload) -> dict[str, str]:
+    """Send an email that the user has already reviewed and approved.
+
+    Human-in-the-loop: the frontend must only call this after the user
+    clicks 'Confirm Send'.
+    """
     return gmail_service.send_message(
         to_email=payload.toEmail,
         subject=payload.subject,
-        body=payload.body
+        body=payload.body,
     )

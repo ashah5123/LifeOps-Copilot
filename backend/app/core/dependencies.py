@@ -1,22 +1,30 @@
-from app.services.agent_runner import AgentRunner
+"""Shared service singletons.
+
+Constructed once at import time and reused across the app.  Each service
+is safe to use in mock/demo mode when GCP is not configured.
+"""
+
 from app.services.auth_service import AuthService
+from app.services.document_ai_service import DocumentAIService
 from app.services.firestore_service import FirestoreService
+from app.services.gmail_service import GmailService
+from app.services.google_oauth_service import GoogleOAuthService
+from app.services.agent_runner import AgentRunner
+from app.services.reminder_service import ReminderService
 from app.services.storage_service import StorageService
+from app.services.vertex_service import VertexService
 
+# Core singletons
+firestore_service = FirestoreService()
+storage_service = StorageService()
+auth_service = AuthService()
+vertex_service = VertexService()
+document_ai_service = DocumentAIService()
+reminder_service = ReminderService()
 
-def get_firestore_service() -> FirestoreService:
-    return FirestoreService()
+# Google integrations
+oauth_service = GoogleOAuthService()
+gmail_service = GmailService(oauth_service=oauth_service)
 
-
-def get_storage_service() -> StorageService:
-    return StorageService()
-
-
-def get_auth_service() -> AuthService:
-    return AuthService()
-
-
-firestore_service = get_firestore_service()
-storage_service = get_storage_service()
-auth_service = get_auth_service()
-agent_runner = AgentRunner()
+# Agent orchestration
+agent_runner = AgentRunner(vertex=vertex_service, firestore=firestore_service)

@@ -1,16 +1,22 @@
+"""Career routes — job analysis, resume tailoring, application tracking."""
+
 from uuid import uuid4
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.core.dependencies import firestore_service
+from app.core.dependencies import agent_runner, firestore_service, vertex_service
 
 router = APIRouter(prefix="/career", tags=["career"])
 
 
+# ------------------------------------------------------------------
+# Request models
+# ------------------------------------------------------------------
+
 class JobAnalysisPayload(BaseModel):
     jobDescription: str
-    resumeText: str
+    resumeText: str = ""
 
 
 class ApplicationPayload(BaseModel):
@@ -19,25 +25,82 @@ class ApplicationPayload(BaseModel):
     status: str = "draft"
 
 
+# ------------------------------------------------------------------
+# POST /api/career/analyze-job
+# ------------------------------------------------------------------
+
 @router.post("/analyze-job")
 def analyze_job(payload: JobAnalysisPayload) -> dict[str, object]:
+    """Analyse a job description and return match insights.
+
+    Uses Vertex AI when available; falls back to agent pipeline mock.
+    """
+    if vertex_service.is_live:
+        prompt = (
+            "Analyse this job description and return a JSON object with:\n"
+            "- jobTitle: inferred job title\n"
+            "- company: company name if mentioned\n"
+            "- requiredSkills: list of required skills\n"
+            "- matchScore: estimated fit score 0-100 based on resume\n"
+            "- missingSkills: skills in the JD not in the resume\n"
+            "- fitSummary: 2-3 sentence summary\n\n"
+            f"Job Description:\n{payload.jobDescription}\n\n"
+            f"Resume:\n{payload.resumeText or '(not provided)'}"
+        )
+        data = vertex_service.generate_json(prompt)
+        return data if "raw" not in data else _mock_analyze(payload)
+
+    return _mock_analyze(payload)
+
+
+def _mock_analyze(payload: JobAnalysisPayload) -> dict[str, object]:
+    # Run through the agent pipeline for structured extraction
+    result = agent_runner.process_for_domain(payload.jobDescription, "career")
+    fields = result["extracted"].get("fields", {})
     return {
-        "matchScore": 82,
-        "missingSkills": ["System Design", "SQL"],
-        "summary": payload.jobDescription[:180]
+        "jobTitle": fields.get("role", "Software Engineer"),
+        "company": fields.get("company", "Unknown"),
+        "requiredSkills": fields.get("skills", ["Python", "React", "SQL"]),
+        "matchScore": 78,
+        "missingSkills": ["System Design", "Kubernetes"],
+        "fitSummary": f"Candidate shows relevant experience. {fields.get('summary', '')[:120]}",
     }
 
+
+# ------------------------------------------------------------------
+# POST /api/career/tailor-resume
+# ------------------------------------------------------------------
 
 @router.post("/tailor-resume")
-def tailor_resume(payload: JobAnalysisPayload) -> dict[str, list[str]]:
+def tailor_resume(payload: JobAnalysisPayload) -> dict[str, object]:
+    """Suggest resume changes to improve match with a job description."""
+    if vertex_service.is_live:
+        prompt = (
+            "Given the job description and resume below, return a JSON object with:\n"
+            "- bulletSuggestions: list of 3-5 improved resume bullet points\n"
+            "- keywordSuggestions: list of keywords to add\n"
+            "- editSummary: brief summary of recommended changes\n\n"
+            f"Job Description:\n{payload.jobDescription}\n\n"
+            f"Resume:\n{payload.resumeText or '(not provided)'}"
+        )
+        data = vertex_service.generate_json(prompt)
+        if "raw" not in data:
+            return data
+
     return {
         "bulletSuggestions": [
-            "Led student project delivery across multiple deadlines.",
-            "Built full-stack features with API integrations.",
-            "Improved team productivity with automation workflows."
-        ]
+            "Led cross-functional project delivery across multiple sprints.",
+            "Built RESTful APIs serving 10k+ requests/day with FastAPI.",
+            "Integrated CI/CD pipelines reducing deploy time by 40%.",
+        ],
+        "keywordSuggestions": ["agile", "cloud-native", "data pipelines", "stakeholder management"],
+        "editSummary": "Focus on quantifiable impact and align terminology with the JD.",
     }
 
+
+# ------------------------------------------------------------------
+# Application CRUD (unchanged)
+# ------------------------------------------------------------------
 
 @router.post("/generate-cover-letter")
 def generate_cover_letter(payload: JobAnalysisPayload) -> dict[str, str]:

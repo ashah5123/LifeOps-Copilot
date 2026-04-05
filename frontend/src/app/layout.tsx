@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ToastWrapper from "@/components/ui/ToastWrapper";
+import ThemeInit from "@/components/layout/ThemeInit";
 
 export const metadata: Metadata = {
   title: "SparkUp — AI-Powered Student Productivity",
@@ -15,6 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body className="min-h-full flex flex-col antialiased">
+        <ThemeInit />
         {children}
         <ToastWrapper />
       </body>

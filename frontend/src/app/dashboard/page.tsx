@@ -19,6 +19,7 @@ import UploadBox from "@/components/upload/UploadBox";
 import TodayFeed from "@/components/feed/TodayFeed";
 import { useAppStore } from "@/lib/store";
 import { mockDashboardSummary, mockFeedItems } from "@/lib/mock-data";
+import type { FeedItem } from "@/types";
 
 const heroCards = [
   {
@@ -96,9 +97,29 @@ const item = {
   show: { opacity: 1, y: 0, transition: { duration: 0.3 } },
 };
 
+function getTimeBasedGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function DashboardPage() {
   const user = useAppStore((s) => s.user);
+  const agentFeedItems = useAppStore((s) => s.agentFeedItems);
   const displayName = user?.name || "there";
+  const greeting = getTimeBasedGreeting();
+
+  // Merge real agent feed items with mock items, real ones first
+  const realFeedItems: FeedItem[] = agentFeedItems.map((item) => ({
+    id: item.id,
+    text: item.text,
+    category: item.category,
+    actionLabel: item.actionLabel,
+    actionUrl: item.actionUrl,
+    timestamp: item.timestamp,
+  }));
+  const combinedFeed = [...realFeedItems, ...mockFeedItems].slice(0, 10);
 
   return (
     <AppShell>
@@ -106,7 +127,7 @@ export default function DashboardPage() {
         {/* Header */}
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-text-primary">
-            Good morning, {displayName}
+            {greeting}, {displayName}
           </h1>
           <p className="text-sm text-text-secondary mt-1">
             Here&apos;s what needs your attention today
@@ -181,7 +202,7 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-lg font-semibold text-text-primary mb-4">Today&apos;s Actions</h2>
             <Card padding="sm">
-              <TodayFeed items={mockFeedItems} />
+              <TodayFeed items={combinedFeed} />
             </Card>
           </div>
         </div>

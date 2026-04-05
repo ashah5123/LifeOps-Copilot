@@ -1,11 +1,12 @@
-"""Career routes — job analysis, resume tailoring, application tracking."""
+"""Career routes — job analysis, resume tailoring, application tracking, job search."""
 
 from uuid import uuid4
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from app.core.dependencies import agent_runner, firestore_service, vertex_service
+from app.services.job_search_service import job_search_service
 
 router = APIRouter(prefix="/career", tags=["career"])
 
@@ -125,3 +126,13 @@ def list_applications() -> list[dict[str, str]]:
 def update_application(application_id: str, payload: ApplicationPayload) -> dict[str, str]:
     updated = firestore_service.update("applications", application_id, payload.model_dump())
     return updated or {"id": application_id, "status": "not-found"}
+
+
+# ------------------------------------------------------------------
+# GET /api/career/search-jobs?q=data+scientist
+# ------------------------------------------------------------------
+
+@router.get("/search-jobs")
+async def search_jobs(q: str = Query(..., description="Search query for jobs")) -> list[dict]:
+    """Search for real job listings using free APIs."""
+    return await job_search_service.search_jobs(q, limit=12)

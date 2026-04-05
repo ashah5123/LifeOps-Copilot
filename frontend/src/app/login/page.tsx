@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
@@ -26,17 +27,14 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    // Simulate login
     await new Promise((r) => setTimeout(r, 1200));
 
-    // Demo: accept any credentials
     const namePart = email.split("@")[0];
     const displayName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-    login({
-      name: displayName,
-      email,
-      initials: displayName.substring(0, 2).toUpperCase(),
-    });
+    login(
+      { name: displayName, email, initials: displayName.substring(0, 2).toUpperCase() },
+      rememberMe,
+    );
 
     setLoading(false);
     addToast({ message: `Welcome back, ${displayName}!`, type: "success" });
@@ -57,13 +55,13 @@ export default function LoginPage() {
             <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
               <SparklesIcon className="w-7 h-7 text-white" />
             </div>
-            <span className="text-3xl font-bold tracking-tight">SparkUp</span>
+            <span className="text-3xl font-bold tracking-tight">LifeOps Copilot</span>
           </div>
           <h1 className="text-4xl font-bold leading-tight mb-4">
-            Welcome back to SparkUp
+            Your AI-powered student life assistant
           </h1>
           <p className="text-lg text-white/70 leading-relaxed">
-            Pick up where you left off. Your AI assistant has been keeping track of everything while you were away.
+            Manage your inbox, career, calendar, and budget — all in one place with intelligent automation.
           </p>
           <div className="mt-10 grid grid-cols-2 gap-4">
             {[
@@ -100,10 +98,10 @@ export default function LoginPage() {
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
               <SparklesIcon className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-bold text-text-primary">SparkUp</span>
+            <span className="text-2xl font-bold text-text-primary">LifeOps Copilot</span>
           </div>
 
-          <h2 className="text-2xl font-bold text-text-primary mb-1">Log in to SparkUp</h2>
+          <h2 className="text-2xl font-bold text-text-primary mb-1">Log in to LifeOps Copilot</h2>
           <p className="text-sm text-text-secondary mb-8">
             Don&apos;t have an account?{" "}
             <Link href="/signup" className="text-primary hover:text-primary-hover font-medium">
@@ -119,7 +117,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="vidhi@university.edu"
+                placeholder="you@university.edu"
                 className="w-full px-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
               />
             </div>
@@ -147,7 +145,12 @@ export default function LoginPage() {
 
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30" />
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary/30"
+                />
                 <span className="text-xs text-text-secondary">Remember me</span>
               </label>
               <button type="button" className="text-xs text-primary hover:text-primary-hover font-medium cursor-pointer">

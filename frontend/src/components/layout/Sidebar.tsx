@@ -40,7 +40,7 @@ export default function Sidebar() {
           <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
             <SparklesIcon className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold text-white tracking-tight">SparkUp</span>
+          <span className="text-xl font-bold text-white tracking-tight">LifeOps Copilot</span>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">

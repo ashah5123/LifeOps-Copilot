@@ -12,3 +12,6 @@ google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
+PyPDF2>=3.0.0
+Pillow>=10.0.0
+pytesseract>=0.3.10

@@ -13,36 +13,47 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAppStore } from "@/lib/store";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-const notifications = [
-  { id: "1", text: "Prof. Martinez replied to your email", time: "30m ago", unread: true },
-  { id: "2", text: "Google phone screen scheduled for Tuesday", time: "2h ago", unread: true },
-  { id: "3", text: "Budget alert: Food spending above average", time: "5h ago", unread: false },
-  { id: "4", text: "Scholarship deadline in 3 days", time: "1d ago", unread: false },
+const searchablePages = [
+  { label: "Dashboard", href: "/dashboard", keywords: ["home", "overview", "dashboard"] },
+  { label: "Inbox", href: "/inbox", keywords: ["email", "gmail", "inbox", "messages"] },
+  { label: "Career Tracker", href: "/career", keywords: ["career", "jobs", "applications", "resume", "internship"] },
+  { label: "Calendar", href: "/calendar", keywords: ["calendar", "schedule", "events", "deadlines"] },
+  { label: "Budget", href: "/budget", keywords: ["budget", "expense", "income", "money", "finance"] },
+  { label: "My Profile", href: "/profile", keywords: ["profile", "account", "user"] },
+  { label: "Settings", href: "/settings", keywords: ["settings", "preferences", "theme", "config"] },
 ];
 
 export default function Topbar() {
-  const { theme, toggleTheme, user, logout } = useAppStore();
+  const { theme, toggleTheme, user, logout, notifications, markAllRead } = useAppStore();
   const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = notifications.filter((n) => n.unread).length;
-  const initials = user?.initials || "V";
-  const displayName = user?.name || "Vidhi";
-  const displayEmail = user?.email || "vidhi@sparkup.ai";
+  const initials = user?.initials || "U";
+  const displayName = user?.name || "User";
+  const displayEmail = user?.email || "user@sparkup.ai";
 
-  // Close dropdowns on outside click
+  const filteredPages = searchQuery.trim()
+    ? searchablePages.filter(
+        (p) =>
+          p.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          p.keywords.some((k) => k.includes(searchQuery.toLowerCase()))
+      )
+    : [];
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setShowNotifications(false);
-      }
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setShowProfile(false);
-      }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setShowProfile(false);
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearch(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -56,16 +67,40 @@ export default function Topbar() {
   return (
     <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur-lg border-b border-border/50">
       <div className="flex items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-3 flex-1 max-w-md">
+        {/* Search */}
+        <div ref={searchRef} className="flex items-center gap-3 flex-1 max-w-md relative">
           <div className="relative flex-1">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
             <input
               type="text"
-              placeholder="Search anything..."
+              placeholder="Search pages..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); }}
+              onFocus={() => setShowSearch(true)}
               suppressHydrationWarning
               className="w-full pl-10 pr-4 py-2 bg-background rounded-xl text-sm text-text-primary placeholder:text-text-secondary/60 border border-border/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
             />
           </div>
+          <AnimatePresence>
+            {showSearch && filteredPages.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                className="absolute top-full left-0 right-0 mt-1 bg-surface rounded-xl shadow-xl border border-border overflow-hidden z-50"
+              >
+                {filteredPages.map((p) => (
+                  <button
+                    key={p.href}
+                    onClick={() => { router.push(p.href); setSearchQuery(""); setShowSearch(false); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="flex items-center gap-2">
@@ -129,7 +164,10 @@ export default function Topbar() {
                     ))}
                   </div>
                   <div className="px-4 py-2.5 border-t border-border">
-                    <button className="text-xs font-medium text-primary hover:text-primary-hover cursor-pointer w-full text-center">
+                    <button
+                      onClick={() => { markAllRead(); }}
+                      className="text-xs font-medium text-primary hover:text-primary-hover cursor-pointer w-full text-center"
+                    >
                       Mark all as read
                     </button>
                   </div>
@@ -168,14 +206,22 @@ export default function Topbar() {
                     </div>
                   </div>
                   <div className="py-1">
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+                    <Link
+                      href="/profile"
+                      onClick={() => setShowProfile(false)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                    >
                       <UserCircleIcon className="w-4 h-4 text-text-secondary" />
                       My Profile
-                    </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+                    </Link>
+                    <Link
+                      href="/settings"
+                      onClick={() => setShowProfile(false)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                    >
                       <Cog6ToothIcon className="w-4 h-4 text-text-secondary" />
                       Settings
-                    </button>
+                    </Link>
                     <div className="border-t border-border my-1" />
                     <button
                       onClick={handleLogout}

@@ -2,25 +2,45 @@
 
 import { create } from "zustand";
 
-interface AppState {
-  sidebarOpen: boolean;
-  toggleSidebar: () => void;
-  setSidebarOpen: (open: boolean) => void;
+// --- localStorage helpers (SSR-safe) ---
+function loadState(): Partial<PersistedState> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem("sparkup-state");
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
 
-  gmailConnected: boolean;
-  setGmailConnected: (connected: boolean) => void;
+function saveState(s: PersistedState) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem("sparkup-state", JSON.stringify(s));
+  } catch { /* quota exceeded – ignore */ }
+}
 
+export interface AgentFeedItem {
+  id: string;
+  text: string;
+  category: "inbox" | "career" | "calendar" | "budget";
+  actionLabel: string;
+  actionUrl: string;
+  timestamp: string;
+  domain: string;
+  priority: string;
+}
+
+interface PersistedState {
   isAuthenticated: boolean;
   user: UserProfile | null;
-  login: (user: UserProfile) => void;
-  logout: () => void;
-
-  toasts: Toast[];
-  addToast: (toast: Omit<Toast, "id">) => void;
-  removeToast: (id: string) => void;
-
+  gmailConnected: boolean;
   theme: "light" | "dark";
-  toggleTheme: () => void;
+  resumeFile: ResumeFile | null;
+  monthlyBudget: number;
+  budgetEntries: BudgetEntry[];
+  notifications: Notification[];
+  agentFeedItems: AgentFeedItem[];
 }
 
 export interface UserProfile {
@@ -35,18 +55,103 @@ export interface Toast {
   type: "success" | "error" | "info" | "warning";
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export interface ResumeFile {
+  name: string;
+  text: string;
+  uploadedAt: string;
+}
+
+export interface BudgetEntry {
+  id: string;
+  description: string;
+  amount: number;
+  category: string;
+  date: string;
+  type: "income" | "expense" | "gift" | "scholarship";
+}
+
+export interface Notification {
+  id: string;
+  text: string;
+  time: string;
+  unread: boolean;
+}
+
+const defaultNotifications: Notification[] = [
+  { id: "1", text: "Prof. Martinez replied to your email", time: "30m ago", unread: true },
+  { id: "2", text: "Google phone screen scheduled for Tuesday", time: "2h ago", unread: true },
+  { id: "3", text: "Budget alert: Food spending above average", time: "5h ago", unread: false },
+  { id: "4", text: "Scholarship deadline in 3 days", time: "1d ago", unread: false },
+];
+
+interface AppState {
+  sidebarOpen: boolean;
+  toggleSidebar: () => void;
+  setSidebarOpen: (open: boolean) => void;
+
+  gmailConnected: boolean;
+  setGmailConnected: (connected: boolean) => void;
+
+  isAuthenticated: boolean;
+  user: UserProfile | null;
+  login: (user: UserProfile, remember?: boolean) => void;
+  logout: () => void;
+
+  toasts: Toast[];
+  addToast: (toast: Omit<Toast, "id">) => void;
+  removeToast: (id: string) => void;
+
+  theme: "light" | "dark";
+  toggleTheme: () => void;
+  initTheme: () => void;
+
+  // Resume persistence
+  resumeFile: ResumeFile | null;
+  setResumeFile: (file: ResumeFile | null) => void;
+
+  // Budget
+  monthlyBudget: number;
+  setMonthlyBudget: (v: number) => void;
+  budgetEntries: BudgetEntry[];
+  addBudgetEntry: (e: BudgetEntry) => void;
+  removeBudgetEntry: (id: string) => void;
+
+  // Notifications
+  notifications: Notification[];
+  markAllRead: () => void;
+  addNotification: (n: Omit<Notification, "id">) => void;
+
+  // Agent feed — real processed results
+  agentFeedItems: AgentFeedItem[];
+  addAgentFeedItem: (item: Omit<AgentFeedItem, "id">) => void;
+  clearAgentFeed: () => void;
+}
+
+const persisted = loadState();
+
+export const useAppStore = create<AppState>((set, get) => ({
   sidebarOpen: true,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-  gmailConnected: false,
-  setGmailConnected: (connected) => set({ gmailConnected: connected }),
+  gmailConnected: persisted.gmailConnected ?? false,
+  setGmailConnected: (connected) => {
+    set({ gmailConnected: connected });
+    saveState({ ...extractPersisted(get()), gmailConnected: connected });
+  },
 
-  isAuthenticated: false,
-  user: null,
-  login: (user) => set({ isAuthenticated: true, user }),
-  logout: () => set({ isAuthenticated: false, user: null, gmailConnected: false }),
+  isAuthenticated: persisted.isAuthenticated ?? false,
+  user: persisted.user ?? null,
+  login: (user, remember = true) => {
+    set({ isAuthenticated: true, user });
+    if (remember) {
+      saveState({ ...extractPersisted(get()), isAuthenticated: true, user });
+    }
+  },
+  logout: () => {
+    set({ isAuthenticated: false, user: null, gmailConnected: false });
+    if (typeof window !== "undefined") localStorage.removeItem("sparkup-state");
+  },
 
   toasts: [],
   addToast: (toast) =>
@@ -56,13 +161,87 @@ export const useAppStore = create<AppState>((set) => ({
   removeToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
-  theme: "light",
+  theme: persisted.theme ?? "light",
   toggleTheme: () =>
     set((s) => {
       const newTheme = s.theme === "light" ? "dark" : "light";
       if (typeof document !== "undefined") {
         document.documentElement.classList.toggle("dark", newTheme === "dark");
+        document.documentElement.style.colorScheme = newTheme;
       }
+      saveState({ ...extractPersisted(get()), theme: newTheme });
       return { theme: newTheme };
     }),
+  initTheme: () => {
+    const t = get().theme;
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("dark", t === "dark");
+      document.documentElement.style.colorScheme = t;
+    }
+  },
+
+  // Resume
+  resumeFile: persisted.resumeFile ?? null,
+  setResumeFile: (file) => {
+    set({ resumeFile: file });
+    saveState({ ...extractPersisted(get()), resumeFile: file });
+  },
+
+  // Budget
+  monthlyBudget: persisted.monthlyBudget ?? 800,
+  setMonthlyBudget: (v) => {
+    set({ monthlyBudget: v });
+    saveState({ ...extractPersisted(get()), monthlyBudget: v });
+  },
+  budgetEntries: persisted.budgetEntries ?? [],
+  addBudgetEntry: (e) => {
+    const entries = [...get().budgetEntries, e];
+    set({ budgetEntries: entries });
+    saveState({ ...extractPersisted(get()), budgetEntries: entries });
+  },
+  removeBudgetEntry: (id) => {
+    const entries = get().budgetEntries.filter((e) => e.id !== id);
+    set({ budgetEntries: entries });
+    saveState({ ...extractPersisted(get()), budgetEntries: entries });
+  },
+
+  // Notifications
+  notifications: persisted.notifications ?? defaultNotifications,
+  markAllRead: () => {
+    const updated = get().notifications.map((n) => ({ ...n, unread: false }));
+    set({ notifications: updated });
+    saveState({ ...extractPersisted(get()), notifications: updated });
+  },
+  addNotification: (n) => {
+    const notif = { ...n, id: crypto.randomUUID() };
+    const list = [notif, ...get().notifications];
+    set({ notifications: list });
+    saveState({ ...extractPersisted(get()), notifications: list });
+  },
+
+  // Agent feed
+  agentFeedItems: persisted.agentFeedItems ?? [],
+  addAgentFeedItem: (item) => {
+    const feed = [{ ...item, id: crypto.randomUUID() }, ...get().agentFeedItems].slice(0, 50);
+    set({ agentFeedItems: feed });
+    saveState({ ...extractPersisted(get()), agentFeedItems: feed });
+  },
+  clearAgentFeed: () => {
+    set({ agentFeedItems: [] });
+    saveState({ ...extractPersisted(get()), agentFeedItems: [] });
+  },
 }));
+
+function extractPersisted(s: AppState): PersistedState {
+  return {
+    isAuthenticated: s.isAuthenticated,
+    user: s.user,
+    gmailConnected: s.gmailConnected,
+    theme: s.theme,
+    resumeFile: s.resumeFile,
+    monthlyBudget: s.monthlyBudget,
+    budgetEntries: s.budgetEntries,
+    notifications: s.notifications,
+    agentFeedItems: s.agentFeedItems,
+  };
+}

@@ -50,10 +50,7 @@ export const sendGmailReply = (payload: {
 }) =>
   request<{ status: string; messageId: string; to: string }>(
     "/api/inbox/gmail/send",
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }
+    { method: "POST", body: JSON.stringify(payload) }
   );
 
 export const processInboxMessage = (content: string) =>
@@ -81,6 +78,22 @@ export const tailorResume = (payload: {
     body: JSON.stringify(payload),
   });
 
+export const searchJobs = (query: string) =>
+  request<Record<string, unknown>[]>(`/api/career/search-jobs?q=${encodeURIComponent(query)}`);
+
+export const createApplication = (payload: {
+  company: string;
+  role: string;
+  status: string;
+}) =>
+  request<Record<string, unknown>>("/api/career/applications", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const listApplications = () =>
+  request<Record<string, unknown>[]>("/api/career/applications");
+
 // Calendar
 export const extractSchedule = (content: string) =>
   request<Record<string, unknown>>("/api/calendar/extract-schedule", {
@@ -98,6 +111,9 @@ export const createReminders = (content: string) =>
 export const getBudgetSummary = () =>
   request<import("@/types").BudgetSummary>("/api/budget/summary");
 
+export const listBudgetEntries = () =>
+  request<Record<string, unknown>[]>("/api/budget/entries");
+
 export const addBudgetEntry = (entry: {
   title: string;
   amount: number;
@@ -107,6 +123,32 @@ export const addBudgetEntry = (entry: {
     method: "POST",
     body: JSON.stringify(entry),
   });
+
+// Agents — unified pipeline
+export const routeContent = (content: string) =>
+  request<{ domain: string }>("/api/agents/route", {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+
+export const processContent = (content: string, domain?: string) =>
+  request<import("@/types").AgentProcessResult>("/api/agents/process", {
+    method: "POST",
+    body: JSON.stringify({ content, domain: domain || null }),
+  });
+
+export const getAgentMemory = (limit = 20) =>
+  request<Record<string, unknown>[]>(`/api/agents/memory?limit=${limit}`);
+
+// Upload with agent processing
+export const uploadFileWithAgent = async (file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const url = `${API_BASE}/api/uploads`;
+  const res = await fetch(url, { method: "POST", body: formData });
+  if (!res.ok) throw new Error("Upload failed");
+  return res.json() as Promise<import("@/types").UploadWithAgentResponse>;
+};
 
 // Approvals
 export const getPendingApprovals = () =>

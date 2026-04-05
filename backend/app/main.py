@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 
-from app.api import approvals, auth, budget, calendar, career, dashboard, health, inbox, uploads
+from app.api import agents, approvals, auth, budget, calendar, career, dashboard, health, inbox, uploads
 from app.core.config import settings
 
 app = FastAPI(title=settings.app_name)
@@ -43,6 +43,7 @@ app.include_router(career.router, prefix=settings.api_prefix)
 app.include_router(calendar.router, prefix=settings.api_prefix)
 app.include_router(budget.router, prefix=settings.api_prefix)
 app.include_router(approvals.router, prefix=settings.api_prefix)
+app.include_router(agents.router, prefix=settings.api_prefix)
 
 
 @app.get("/")

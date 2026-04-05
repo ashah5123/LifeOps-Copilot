@@ -38,6 +38,9 @@ class VertexService:
                     project=settings.google_cloud_project,
                     location=settings.vertex_location,
                 )
+                # Verify credentials are actually available before marking as live
+                from google.auth import default as _default_creds
+                _default_creds()
                 self._model = GenerativeModel(settings.vertex_model_name)
                 logger.info("Vertex AI initialised with model %s", settings.vertex_model_name)
             except Exception as exc:

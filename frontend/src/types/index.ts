@@ -106,7 +106,7 @@ export interface BudgetEntry {
   amount: number;
   category: string;
   date: string;
-  type: "income" | "expense";
+  type: "income" | "expense" | "gift" | "scholarship";
 }
 
 export interface BudgetSummary {
@@ -129,6 +129,29 @@ export interface BudgetAlert {
   id: string;
   message: string;
   severity: "warning" | "error" | "info";
+}
+
+// Agent Pipeline
+export interface AgentProcessResult {
+  domain: string;
+  confidence: number;
+  title: string;
+  detail: string;
+  priority: "high" | "medium" | "low";
+  requiresApproval: boolean;
+  recommendedActions: string[];
+  extractedFields: Record<string, unknown>;
+  reviewNote: string;
+  memoryId: string;
+}
+
+export interface UploadWithAgentResponse {
+  uploadId: string;
+  fileName: string;
+  fileUrl: string;
+  status: "uploaded" | "extracted" | "processed";
+  extractedText: string;
+  agentResult: AgentProcessResult | null;
 }
 
 // Approvals

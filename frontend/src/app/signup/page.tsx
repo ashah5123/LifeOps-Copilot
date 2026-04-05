@@ -1,15 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SparklesIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
-import { useAppStore, US_STATES } from "@/lib/store";
+import { useAppStore } from "@/lib/store";
+import { hasAccount, registerAccount } from "@/lib/local-accounts";
+import { COUNTRIES, getRegionsForCountry } from "@/lib/country-states";
 import NoiseBackground from "@/components/ui/NoiseBackground";
 import TypingPlaceholderInput from "@/components/ui/TypingPlaceholderInput";
 
 const inputClass = "w-full px-4 py-2.5 bg-surface border border-border rounded-xl text-sm text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all";
+
+const selectClass = `${inputClass} cursor-pointer appearance-none bg-surface pr-10`;
+const selectChevron =
+  "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e\")";
 
 const NAME_PLACEHOLDERS = ["Nishit Patel", "Alex Rivera", "Samira Chen", "Jordan Lee"];
 const EMAIL_PLACEHOLDERS = ["nishit@university.edu", "alex@asu.edu", "hello@lifeops.app", "you@university.edu"];
@@ -17,7 +23,7 @@ const EMAIL_PLACEHOLDERS = ["nishit@university.edu", "alex@asu.edu", "hello@life
 export default function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [location, setLocation] = useState("");
+  const [country, setCountry] = useState("");
   const [selectedState, setSelectedState] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -27,16 +33,20 @@ export default function SignupPage() {
   const router = useRouter();
   const addToast = useAppStore((s) => s.addToast);
 
-  // Derive timezone from selected state
-  const stateObj = US_STATES.find((s) => s.value === selectedState);
-  const derivedTimezone = stateObj?.tz || "America/Phoenix";
+  const regions = useMemo(() => (country ? getRegionsForCountry(country) : []), [country]);
+  const stateObj = regions.find((s) => s.value === selectedState);
+  const derivedTimezone = stateObj?.tz || "UTC";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
+    if (!country) {
+      setError("Please select your country");
+      return;
+    }
     if (!selectedState) {
-      setError("Please select your state");
+      setError("Please select your state or region");
       return;
     }
     if (password !== confirmPassword) {
@@ -48,15 +58,37 @@ export default function SignupPage() {
       return;
     }
 
+    const emailKey = email.toLowerCase().trim();
+    if (typeof localStorage !== "undefined" && hasAccount(emailKey)) {
+      const msg = "An account with this email already exists. Please log in.";
+      setError(msg);
+      addToast({ message: msg, type: "error" });
+      return;
+    }
+
     setLoading(true);
     await new Promise((r) => setTimeout(r, 1500));
     setLoading(false);
     const trimmed = name.trim();
     const first = trimmed.split(/\s+/)[0] || trimmed;
     if (typeof localStorage !== "undefined") {
+      registerAccount(emailKey, {
+        password,
+        name: trimmed,
+        firstName: first,
+        country,
+        state: selectedState,
+        timezone: derivedTimezone,
+      });
       localStorage.setItem(
-        `lifeops-profile-${email.toLowerCase()}`,
-        JSON.stringify({ name: trimmed, firstName: first })
+        `lifeops-profile-${emailKey}`,
+        JSON.stringify({
+          name: trimmed,
+          firstName: first,
+          country,
+          state: selectedState,
+          timezone: derivedTimezone,
+        })
       );
     }
     addToast({ message: "Account created! Please log in.", type: "success" });
@@ -132,24 +164,53 @@ export default function SignupPage() {
               />
             </div>
 
-            {/* Location + State */}
+            {/* Country + State/region */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1.5">City / Location</label>
-                <input type="text" required value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Tempe" className={inputClass} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1.5">State</label>
+                <label className="mb-1.5 block text-xs font-medium text-text-secondary">Country</label>
                 <select
                   required
+                  value={country}
+                  onChange={(e) => {
+                    setCountry(e.target.value);
+                    setSelectedState("");
+                  }}
+                  className={selectClass}
+                  style={{
+                    backgroundImage: selectChevron,
+                    backgroundPosition: "right 0.5rem center",
+                    backgroundRepeat: "no-repeat",
+                    backgroundSize: "1.5em 1.5em",
+                  }}
+                >
+                  <option value="">Select country</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-text-secondary">State / Region</label>
+                <select
+                  required
+                  disabled={!country}
                   value={selectedState}
                   onChange={(e) => setSelectedState(e.target.value)}
-                  className={`${inputClass} cursor-pointer appearance-none`}
-                  style={{ backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e\")", backgroundPosition: "right 0.5rem center", backgroundRepeat: "no-repeat", backgroundSize: "1.5em 1.5em", paddingRight: "2.5rem" }}
+                  className={`${selectClass} disabled:cursor-not-allowed disabled:opacity-50`}
+                  style={{
+                    backgroundImage: selectChevron,
+                    backgroundPosition: "right 0.5rem center",
+                    backgroundRepeat: "no-repeat",
+                    backgroundSize: "1.5em 1.5em",
+                  }}
                 >
-                  <option value="">Select state</option>
-                  {US_STATES.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
+                  <option value="">{country ? "Select state / region" : "Select country first"}</option>
+                  {regions.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
                   ))}
                 </select>
               </div>

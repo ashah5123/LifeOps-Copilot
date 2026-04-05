@@ -1,11 +1,15 @@
 """Calendar routes — schedule extraction, reminders, and study planning."""
 
+from datetime import datetime, timezone
+from uuid import uuid4
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.dependencies import (
     agent_runner,
     deadline_service,
+    firestore_service,
     reminder_service,
     time_analytics_service,
     vertex_service,
@@ -15,11 +19,49 @@ from app.services.time_analytics_service import resolve_week_argument
 
 study_planner = StudyPlannerService()
 
+EVENTS_COLLECTION = "calendar_events"
+
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
 
 class CalendarPayload(BaseModel):
     content: str
+
+
+class ReminderCreatePayload(BaseModel):
+    title: str
+    dateTime: str
+    sourceModule: str = "calendar"
+    deadlineId: str | None = None
+
+
+class ReminderUpdatePayload(BaseModel):
+    title: str | None = None
+    dateTime: str | None = None
+    sourceModule: str | None = None
+    deadlineId: str | None = None
+
+
+class EventCreatePayload(BaseModel):
+    title: str
+    date: str
+    time: str = "09:00"
+    event_type: str = "other"
+    location: str | None = None
+    notes: str | None = None
+    is_all_day: bool = False
+    course_name: str | None = None
+
+
+class EventUpdatePayload(BaseModel):
+    title: str | None = None
+    date: str | None = None
+    time: str | None = None
+    event_type: str | None = None
+    location: str | None = None
+    notes: str | None = None
+    is_all_day: bool | None = None
+    course_name: str | None = None
 
 
 # ------------------------------------------------------------------
@@ -31,7 +73,10 @@ def extract_schedule(payload: CalendarPayload) -> dict[str, object]:
     """Extract dates, events, and reminders from schedule/syllabus text.
 
     Uses Vertex AI when available; otherwise uses the agent pipeline.
+    Persists extracted events and reminders to Firestore.
     """
+    now = datetime.now(timezone.utc).isoformat()
+
     if vertex_service.is_live:
         prompt = (
             "Extract a schedule from the text below and return a JSON object with:\n"
@@ -42,6 +87,26 @@ def extract_schedule(payload: CalendarPayload) -> dict[str, object]:
         )
         data = vertex_service.generate_json(prompt)
         if "raw" not in data:
+            raw_events = data.get("events", [])
+            for e in raw_events:
+                firestore_service.create(EVENTS_COLLECTION, {
+                    "id": str(uuid4()),
+                    "title": e.get("title", "Extracted event"),
+                    "date": e.get("date", ""),
+                    "time": e.get("time", "09:00"),
+                    "event_type": "other",
+                    "location": None,
+                    "notes": None,
+                    "is_all_day": False,
+                    "course_name": None,
+                    "created_at": now,
+                })
+            for r in data.get("reminders", []):
+                reminder_service.create_reminder(
+                    title=r.get("title", "Reminder"),
+                    date_time=r.get("dateTime", ""),
+                    source_module="calendar",
+                )
             return data
 
     # Fallback: run through agent pipeline
@@ -57,61 +122,127 @@ def extract_schedule(payload: CalendarPayload) -> dict[str, object]:
         {"title": "Project Review", "date": "2026-04-07", "time": "14:00"},
     ]
 
+    # Persist to Firestore
+    for e in events:
+        firestore_service.create(EVENTS_COLLECTION, {
+            "id": str(uuid4()),
+            "title": e["title"],
+            "date": e["date"],
+            "time": e["time"],
+            "event_type": "other",
+            "location": None,
+            "notes": None,
+            "is_all_day": False,
+            "course_name": None,
+            "created_at": now,
+        })
+
+    reminders = []
+    for e in events:
+        r = reminder_service.create_reminder(
+            title=e["title"],
+            date_time=f"{e['date']}T{e['time']}:00",
+            source_module="calendar",
+        )
+        reminders.append(r)
+
     return {
         "events": events,
-        "reminders": [{"title": e["title"], "dateTime": f"{e['date']}T{e['time']}:00"} for e in events],
+        "reminders": reminders,
         "summary": fields.get("summary", payload.content[:180]),
         "agentResult": result,
     }
 
 
 # ------------------------------------------------------------------
-# POST /api/calendar/reminders
+# Reminders CRUD
 # ------------------------------------------------------------------
 
-@router.post("/reminders")
-def create_reminder(payload: CalendarPayload) -> dict[str, object]:
-    """Create reminders from schedule text.
+@router.post("/reminders", status_code=201)
+def create_reminder(payload: ReminderCreatePayload) -> dict:
+    """Create a reminder and persist it to Firestore."""
+    reminder = reminder_service.create_reminder(
+        title=payload.title,
+        date_time=payload.dateTime,
+        source_module=payload.sourceModule,
+        deadline_id=payload.deadlineId,
+    )
+    return reminder
 
-    Extracts dates first via the agent pipeline, then creates reminder
-    objects through the reminder service.
-    """
-    result = agent_runner.process_for_domain(payload.content, "calendar")
-    fields = result["extracted"].get("fields", {})
-    dates = fields.get("dates", [])
 
-    created: list[dict[str, str]] = []
-    if dates:
-        for d in dates:
-            r = reminder_service.create_reminder(
-                title=fields.get("title", "Reminder"),
-                date_time=f"{d}T09:00:00",
-                source_module="calendar",
-            )
-            created.append(r)
-    else:
-        created.append(
-            reminder_service.create_reminder(
-                title="Reminder from uploaded schedule",
-                date_time="2026-04-06T09:00:00",
-                source_module="calendar",
-            )
-        )
+@router.get("/reminders")
+def list_reminders() -> list[dict]:
+    """List all reminders from Firestore."""
+    return reminder_service.list_reminders()
 
-    return {
-        "reminders": created,
-        "count": len(created),
-        "requiresApproval": result["review"].get("requiresApproval", True),
+
+@router.patch("/reminders/{reminder_id}")
+def update_reminder(reminder_id: str, payload: ReminderUpdatePayload) -> dict:
+    """Update an existing reminder."""
+    updates = payload.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="no fields to update")
+    updated = reminder_service.update_reminder(reminder_id, updates)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="reminder not found")
+    return updated
+
+
+@router.delete("/reminders/{reminder_id}", status_code=204)
+def delete_reminder(reminder_id: str) -> None:
+    """Delete a reminder."""
+    deleted = reminder_service.delete_reminder(reminder_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="reminder not found")
+
+
+# ------------------------------------------------------------------
+# Calendar Events CRUD
+# ------------------------------------------------------------------
+
+@router.post("/events", status_code=201)
+def create_event(payload: EventCreatePayload) -> dict:
+    """Create a calendar event and persist it to Firestore."""
+    event = {
+        "id": str(uuid4()),
+        "title": payload.title,
+        "date": payload.date,
+        "time": payload.time,
+        "event_type": payload.event_type,
+        "location": payload.location,
+        "notes": payload.notes,
+        "is_all_day": payload.is_all_day,
+        "course_name": payload.course_name,
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    firestore_service.create(EVENTS_COLLECTION, event)
+    return event
 
-
-# ------------------------------------------------------------------
-# Existing helper endpoints (unchanged)
-# ------------------------------------------------------------------
 
 @router.get("/events")
-def list_events() -> list[dict[str, str]]:
-    return [{"id": "event-1", "title": "Class", "date": "2026-04-06", "time": "09:00"}]
+def list_events() -> list[dict]:
+    """List all calendar events from Firestore."""
+    return firestore_service.list_collection(EVENTS_COLLECTION)
+
+
+@router.patch("/events/{event_id}")
+def update_event(event_id: str, payload: EventUpdatePayload) -> dict:
+    """Update an existing calendar event."""
+    updates = payload.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="no fields to update")
+    updated = firestore_service.update(EVENTS_COLLECTION, event_id, updates)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="event not found")
+    return updated
+
+
+@router.delete("/events/{event_id}", status_code=204)
+def delete_event(event_id: str) -> None:
+    """Delete a calendar event."""
+    deleted = firestore_service.delete(EVENTS_COLLECTION, event_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="event not found")
 
 
 @router.post("/sync-google")

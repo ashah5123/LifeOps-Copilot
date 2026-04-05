@@ -1,11 +1,18 @@
 """Career routes — job analysis, resume tailoring, application tracking."""
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from app.core.dependencies import agent_runner, firestore_service, vertex_service
+from app.core.dependencies import (
+    agent_runner,
+    firestore_service,
+    job_matching_service,
+    job_scraper_service,
+    vertex_service,
+)
 from app.services.application_pipeline_service import ApplicationPipelineService
 from app.services.interview_prep_service import InterviewPrepService
 from app.services.skills_analysis_service import SkillsAnalysisService
@@ -14,6 +21,8 @@ router = APIRouter(prefix="/career", tags=["career"])
 pipeline_service = ApplicationPipelineService(firestore_service)
 interview_prep = InterviewPrepService()
 skills_service = SkillsAnalysisService(firestore_service)
+
+SAVED_JOBS_COLLECTION = "saved_jobs"
 
 
 # ------------------------------------------------------------------
@@ -295,3 +304,186 @@ def get_certifications(payload: CertificationsPayload) -> list:
 @router.post("/skills/learning-plan")
 def get_learning_plan(payload: LearningPlanPayload) -> dict:
     return skills_service.generate_learning_plan(payload.missingSkills)
+
+
+# ------------------------------------------------------------------
+# Job search — request models
+# ------------------------------------------------------------------
+
+class JobSearchPayload(BaseModel):
+    query: str
+    location: str = ""
+    num_pages: int = 1
+    filters: dict = {}
+
+
+class JobRecommendPayload(BaseModel):
+    resume_text: str
+    query: str = "software engineer"
+    location: str = ""
+    num_pages: int = 1
+    preferred_work_mode: str | None = None
+    preferred_job_type: str | None = None
+    salary_expectation: float | None = None
+
+
+class ApplyFromJobPayload(BaseModel):
+    resume_text: str = ""
+    cover_letter: str = ""
+    notes: str = ""
+
+
+# ------------------------------------------------------------------
+# POST /api/career/jobs/search
+# ------------------------------------------------------------------
+
+@router.post("/jobs/search")
+def search_jobs(payload: JobSearchPayload) -> dict:
+    """Search jobs via JSearch API with optional filters."""
+    jobs = job_scraper_service.search_jobs(
+        query=payload.query,
+        location=payload.location,
+        num_pages=payload.num_pages,
+    )
+    if payload.filters:
+        jobs = job_scraper_service.filter_jobs(jobs, payload.filters)
+    return {"jobs": jobs, "count": len(jobs), "query": payload.query}
+
+
+# ------------------------------------------------------------------
+# GET /api/career/jobs/saved
+# (must be declared before /{job_id} to avoid route conflict)
+# ------------------------------------------------------------------
+
+@router.get("/jobs/saved")
+def get_saved_jobs() -> list[dict]:
+    """Return all jobs saved by the user."""
+    return firestore_service.list_collection(SAVED_JOBS_COLLECTION)
+
+
+# ------------------------------------------------------------------
+# GET /api/career/jobs/trending
+# ------------------------------------------------------------------
+
+@router.get("/jobs/trending")
+def get_trending_jobs() -> dict:
+    """Return popular recent jobs (searches common roles and merges results)."""
+    trending_queries = ["software engineer", "data scientist", "product manager"]
+    seen: set[str] = set()
+    jobs: list[dict] = []
+    for q in trending_queries:
+        results = job_scraper_service.search_jobs(query=q, num_pages=1)
+        for j in results:
+            if j["id"] not in seen:
+                seen.add(j["id"])
+                jobs.append(j)
+    return {"jobs": jobs[:10], "count": len(jobs[:10])}
+
+
+# ------------------------------------------------------------------
+# POST /api/career/jobs/recommend
+# ------------------------------------------------------------------
+
+@router.post("/jobs/recommend")
+def recommend_jobs(payload: JobRecommendPayload) -> dict:
+    """Return AI-matched job recommendations ranked by resume fit."""
+    jobs = job_scraper_service.search_jobs(
+        query=payload.query,
+        location=payload.location,
+        num_pages=payload.num_pages,
+    )
+    user_profile = {
+        "resume_text": payload.resume_text,
+        "preferred_work_mode": payload.preferred_work_mode,
+        "preferred_job_type": payload.preferred_job_type,
+        "salary_expectation": payload.salary_expectation,
+    }
+    ranked = job_matching_service.rank_jobs_by_fit(jobs, user_profile)
+    return {"jobs": ranked, "count": len(ranked)}
+
+
+# ------------------------------------------------------------------
+# GET /api/career/jobs/{job_id}
+# ------------------------------------------------------------------
+
+@router.get("/jobs/{job_id}")
+def get_job_details(job_id: str) -> dict:
+    """Return full details for a single job posting."""
+    job = job_scraper_service.get_job_details(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    # Attach saved flag
+    saved = firestore_service.get(SAVED_JOBS_COLLECTION, job_id)
+    job["is_saved"] = saved is not None
+    return job
+
+
+# ------------------------------------------------------------------
+# POST /api/career/jobs/{job_id}/save
+# ------------------------------------------------------------------
+
+@router.post("/jobs/{job_id}/save", status_code=201)
+def save_job(job_id: str) -> dict:
+    """Save a job to the user's saved list."""
+    existing = firestore_service.get(SAVED_JOBS_COLLECTION, job_id)
+    if existing:
+        return existing
+
+    job = job_scraper_service.get_job_details(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    record = {**job, "id": job_id, "is_saved": True, "saved_at": datetime.now(timezone.utc).isoformat()}
+    firestore_service.create(SAVED_JOBS_COLLECTION, record)
+    return record
+
+
+# ------------------------------------------------------------------
+# DELETE /api/career/jobs/{job_id}/unsave
+# ------------------------------------------------------------------
+
+@router.delete("/jobs/{job_id}/unsave", status_code=204)
+def unsave_job(job_id: str) -> None:
+    """Remove a job from the user's saved list."""
+    deleted = firestore_service.delete(SAVED_JOBS_COLLECTION, job_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="saved job not found")
+
+
+# ------------------------------------------------------------------
+# POST /api/career/jobs/{job_id}/apply
+# ------------------------------------------------------------------
+
+@router.post("/jobs/{job_id}/apply", status_code=201)
+def apply_from_job(job_id: str, payload: ApplyFromJobPayload) -> dict:
+    """Create an application record pre-filled from a job listing."""
+    job = job_scraper_service.get_job_details(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    record = {
+        "id": str(uuid4()),
+        "job_id": job_id,
+        "company": job.get("company", ""),
+        "role": job.get("title", ""),
+        "status": "applied",
+        "applied_date": datetime.now(timezone.utc).date().isoformat(),
+        "job_url": job.get("apply_link", ""),
+        "job_description": job.get("description", "")[:2000],
+        "salary_range": (
+            f"{job.get('salary_min', '')}–{job.get('salary_max', '')} {job.get('salary_currency', '')}"
+            if job.get("salary_min") else ""
+        ),
+        "location": job.get("location", ""),
+        "work_mode": job.get("work_mode", ""),
+        "recruiter_name": None,
+        "recruiter_email": None,
+        "interview_dates": [],
+        "notes": payload.notes,
+        "resume_version": "",
+        "cover_letter": payload.cover_letter,
+        "follow_up_date": None,
+        "match_score": 0,
+    }
+    firestore_service.create("applications", record)
+    return record

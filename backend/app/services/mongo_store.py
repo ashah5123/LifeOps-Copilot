@@ -23,7 +23,7 @@ def _strip_mongo_id(doc: dict[str, Any] | None) -> dict[str, Any] | None:
 class MongoDocumentStore:
     """Persist collections as MongoDB collections; documents use string field ``id``."""
 
-    def __init__(self, uri: str, database: str = "sparkup") -> None:
+    def __init__(self, uri: str, database: str = "lifeops") -> None:
         self._client = MongoClient(uri, serverSelectionTimeoutMS=5000)
         self._db = self._client[database]
         try:

@@ -1061,8 +1061,8 @@ export default function CareerPage() {
           resume_text: resumeText,
           cover_letter: coverLetter,
           notes: applyNeedsAtsBoost
-            ? "Submitted from SparkUp — low match triggered ATS resume boost + user review"
-            : "Submitted from SparkUp career search",
+            ? "Submitted from LifeOps — low match triggered ATS resume boost + user review"
+            : "Submitted from LifeOps career search",
         });
       } catch {
         await createApplication({
@@ -1902,7 +1902,7 @@ export default function CareerPage() {
                 <p className="text-sm text-text-secondary leading-relaxed">
                   {applyNeedsAtsBoost
                     ? "Your resume was tuned for ATS keyword overlap with this job. Edit the draft if you want, then submit."
-                    : "Review your application details before submitting. SparkUp has pre-filled the information from your profile and resume."}
+                    : "Review your application details before submitting. LifeOps has pre-filled the information from your profile and resume."}
                 </p>
 
                 {/* Target job */}

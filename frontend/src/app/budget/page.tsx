@@ -159,12 +159,12 @@ function exportCSV(entries: BudgetEntry[]) {
     (e) => `"${e.id}","${e.description}",${e.amount},"${e.category}","${e.date}","${e.type}"`,
   );
   const csv = [header, ...rows].join("\n");
-  downloadBlob(new Blob([csv], { type: "text/csv" }), "sparkup-budget.csv");
+  downloadBlob(new Blob([csv], { type: "text/csv" }), "lifeops-budget.csv");
 }
 
 function exportPDF(entries: BudgetEntry[], monthlyBudget: number) {
   const lines = [
-    "SparkUp Budget Report",
+    "LifeOps Budget Report",
     "=====================",
     "",
     `Monthly Budget: $${monthlyBudget.toFixed(2)}`,
@@ -178,7 +178,7 @@ function exportPDF(entries: BudgetEntry[], monthlyBudget: number) {
   ];
   downloadBlob(
     new Blob([lines.join("\n")], { type: "application/pdf" }),
-    "sparkup-budget.pdf",
+    "lifeops-budget.pdf",
   );
 }
 
@@ -192,6 +192,7 @@ export default function BudgetPage() {
   const setMonthlyBudget = useAppStore((s) => s.setMonthlyBudget);
   const budgetEntries = useAppStore((s) => s.budgetEntries);
   const addBudgetEntry = useAppStore((s) => s.addBudgetEntry);
+  const replaceBudgetEntries = useAppStore((s) => s.replaceBudgetEntries);
   const updateBudgetEntry = useAppStore((s) => s.updateBudgetEntry);
   const removeBudgetEntry = useAppStore((s) => s.removeBudgetEntry);
 
@@ -199,6 +200,20 @@ export default function BudgetPage() {
   const [insights, setInsights] = useState<{ insights: unknown[]; recommendations: unknown[] } | null>(
     null,
   );
+
+  /* One-time reset of locally cached budget rows (stale mock/offline entries) after this app version. */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const KEY = "lifeops-budget-data-version";
+    const LEGACY_KEY = "sparkup-budget-data-version";
+    const VERSION = "4";
+    const current = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY_KEY);
+    if (current !== VERSION) {
+      replaceBudgetEntries([]);
+      localStorage.setItem(KEY, VERSION);
+      localStorage.removeItem(LEGACY_KEY);
+    }
+  }, [replaceBudgetEntries]);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,12 +232,6 @@ export default function BudgetPage() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    getBudgetInsights()
-      .then(setInsights)
-      .catch(() => setInsights(null));
-  }, [serverEntries.length, budgetEntries.length]);
 
   const refreshServerEntries = useCallback(async () => {
     try {
@@ -321,6 +330,14 @@ export default function BudgetPage() {
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  const insightMonthKey = `${calYear}-${String(calMonth + 1).padStart(2, "0")}`;
+
+  useEffect(() => {
+    getBudgetInsights(insightMonthKey)
+      .then(setInsights)
+      .catch(() => setInsights(null));
+  }, [insightMonthKey, serverEntries.length, budgetEntries.length]);
 
   /* ── calendar derived data ─────────────────────────── */
   const totalDays = daysInMonth(calYear, calMonth);
@@ -480,7 +497,7 @@ export default function BudgetPage() {
     }
     try {
       const blob = await exportBudgetCsvBlob(dates[0], dates[dates.length - 1]);
-      downloadBlob(blob, `sparkup-budget-${dates[0]}_${dates[dates.length - 1]}.csv`);
+      downloadBlob(blob, `lifeops-budget-${dates[0]}_${dates[dates.length - 1]}.csv`);
     } catch {
       exportCSV(allEntries);
     }

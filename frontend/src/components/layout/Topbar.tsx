@@ -3,28 +3,34 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MagnifyingGlassIcon,
   BellIcon,
   SunIcon,
   MoonIcon,
   ArrowRightStartOnRectangleIcon,
   UserCircleIcon,
   Cog6ToothIcon,
+  HomeIcon,
+  InboxIcon,
+  BriefcaseIcon,
+  CalendarDaysIcon,
+  BanknotesIcon,
 } from "@heroicons/react/24/outline";
 import { useAppStore } from "@/lib/store";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getGmailMessages, listCalendarEvents, getUpcomingDeadlines } from "@/lib/api";
 import type { GmailMessage } from "@/types";
+import GooeyInput from "@/components/ui/GooeyInput";
+import PlaceholdersAndVanishInput from "@/components/ui/PlaceholdersAndVanishInput";
 
 const searchablePages = [
-  { label: "Dashboard", href: "/dashboard", keywords: ["home", "overview", "dashboard"] },
-  { label: "Inbox", href: "/inbox", keywords: ["email", "gmail", "inbox", "messages"] },
-  { label: "Career Tracker", href: "/career", keywords: ["career", "jobs", "applications", "resume", "internship"] },
-  { label: "Calendar", href: "/calendar", keywords: ["calendar", "schedule", "events", "deadlines"] },
-  { label: "Budget", href: "/budget", keywords: ["budget", "expense", "income", "money", "finance"] },
-  { label: "My Profile", href: "/profile", keywords: ["profile", "account", "user"] },
-  { label: "Settings", href: "/settings", keywords: ["settings", "preferences", "theme", "config"] },
+  { label: "Dashboard", href: "/dashboard", icon: HomeIcon, keywords: ["home", "overview", "dashboard"] },
+  { label: "Inbox", href: "/inbox", icon: InboxIcon, keywords: ["email", "gmail", "inbox", "messages", "mail", "reply"] },
+  { label: "Career", href: "/career", icon: BriefcaseIcon, keywords: ["career", "jobs", "applications", "resume", "internship"] },
+  { label: "Calendar", href: "/calendar", icon: CalendarDaysIcon, keywords: ["calendar", "schedule", "events", "deadlines"] },
+  { label: "Budget", href: "/budget", icon: BanknotesIcon, keywords: ["budget", "expense", "income", "money", "finance"] },
+  { label: "My Profile", href: "/profile", icon: UserCircleIcon, keywords: ["profile", "account", "user", "me"] },
+  { label: "Settings", href: "/settings", icon: Cog6ToothIcon, keywords: ["settings", "preferences", "theme", "config"] },
 ];
 
 function formatRelativeTime(ms: number): string {
@@ -52,13 +58,14 @@ export default function Topbar() {
   const unreadCount = notifications.filter((n) => n.unread).length;
   const initials = user?.initials || "U";
   const displayName = user?.name || "User";
-  const displayEmail = user?.email || "user@sparkup.ai";
+  const displayEmail = user?.email || "user@lifeops.app";
 
-  const filteredPages = searchQuery.trim()
+  const q = searchQuery.trim().toLowerCase();
+  const searchResults = q.length
     ? searchablePages.filter(
         (p) =>
-          p.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          p.keywords.some((k) => k.includes(searchQuery.toLowerCase()))
+          p.label.toLowerCase().includes(q) ||
+          p.keywords.some((k) => k.includes(q) || q.includes(k)),
       )
     : [];
 
@@ -70,6 +77,17 @@ export default function Topbar() {
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        document.getElementById("lifeops-search")?.focus();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   useEffect(() => {
@@ -161,40 +179,69 @@ export default function Topbar() {
     router.push("/login");
   };
 
+  const handleSearchSelect = (href: string) => {
+    setSearchQuery("");
+    setShowSearch(false);
+    router.push(href);
+  };
+
   return (
     <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur-lg border-b border-border/50">
-      <div className="flex items-center justify-between px-6 py-3">
-        {/* Search */}
-        <div ref={searchRef} className="flex items-center gap-3 flex-1 max-w-md relative">
-          <div className="relative flex-1">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
-            <input
-              type="text"
-              placeholder="Search pages..."
+      <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-6">
+        <div ref={searchRef} className="relative flex min-w-0 flex-1 max-w-md items-center">
+          <GooeyInput className="w-full">
+            <PlaceholdersAndVanishInput
+              id="lifeops-search"
+              placeholders={[
+                "Search inbox, deadlines, and syllabus emails…",
+                "Jump to career or job board…",
+                "Find calendar blocks and study sessions…",
+                "Open budget categories and alerts…",
+                "Search tasks and LifeOps pages (Ctrl+K)…",
+              ]}
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setShowSearch(true); }}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSearch(true);
+              }}
               onFocus={() => setShowSearch(true)}
-              suppressHydrationWarning
-              className="w-full pl-10 pr-4 py-2 bg-background rounded-xl text-sm text-text-primary placeholder:text-text-secondary/60 border border-border/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const first = searchResults[0];
+                if (first) handleSearchSelect(first.href);
+              }}
             />
-          </div>
+          </GooeyInput>
           <AnimatePresence>
-            {showSearch && filteredPages.length > 0 && (
+            {showSearch && q.length > 0 && (
               <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
-                className="absolute top-full left-0 right-0 mt-1 bg-surface rounded-xl shadow-xl border border-border overflow-hidden z-50"
+                initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                transition={{ duration: 0.15 }}
+                className="absolute top-full left-0 right-0 mt-2 bg-surface rounded-2xl shadow-xl border border-border overflow-hidden z-50"
               >
-                {filteredPages.map((p) => (
-                  <button
-                    key={p.href}
-                    onClick={() => { router.push(p.href); setSearchQuery(""); setShowSearch(false); }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
-                  >
-                    {p.label}
-                  </button>
-                ))}
+                {searchResults.length > 0 ? (
+                  <div className="py-1">
+                    <p className="px-4 py-2 text-xs text-text-secondary font-medium uppercase tracking-wider">Pages</p>
+                    {searchResults.map((result) => (
+                      <button
+                        key={result.href}
+                        type="button"
+                        onClick={() => handleSearchSelect(result.href)}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-surface-hover transition-colors cursor-pointer"
+                      >
+                        <result.icon className="w-4 h-4 text-text-secondary shrink-0" />
+                        <span>{result.label}</span>
+                        <span className="ml-auto text-xs text-text-secondary/50">Go →</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-sm text-text-secondary">No results for &ldquo;{searchQuery}&rdquo;</p>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -204,7 +251,7 @@ export default function Topbar() {
           {/* Theme Toggle */}
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+            className="p-2 rounded-xl hover:bg-surface-hover transition-colors cursor-pointer"
             title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
           >
             {theme === "light" ? (
@@ -218,7 +265,7 @@ export default function Topbar() {
           <div ref={notifRef} className="relative">
             <button
               onClick={() => { setShowNotifications(!showNotifications); setShowProfile(false); }}
-              className="relative p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+              className="relative p-2 rounded-xl hover:bg-surface-hover transition-colors cursor-pointer"
             >
               <BellIcon className="w-5 h-5 text-text-secondary" />
               {unreadCount > 0 && (
@@ -249,7 +296,7 @@ export default function Topbar() {
                     {notifications.map((notif) => (
                       <div
                         key={notif.id}
-                        className={`px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer border-b border-border/30 last:border-0 ${
+                        className={`px-4 py-3 hover:bg-surface-hover transition-colors cursor-pointer border-b border-border/30 last:border-0 ${
                           notif.unread ? "bg-primary/5" : ""
                         }`}
                       >
@@ -311,7 +358,7 @@ export default function Topbar() {
                     <Link
                       href="/profile"
                       onClick={() => setShowProfile(false)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-surface-hover transition-colors cursor-pointer"
                     >
                       <UserCircleIcon className="w-4 h-4 text-text-secondary" />
                       My Profile
@@ -319,7 +366,7 @@ export default function Topbar() {
                     <Link
                       href="/settings"
                       onClick={() => setShowProfile(false)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-primary hover:bg-surface-hover transition-colors cursor-pointer"
                     >
                       <Cog6ToothIcon className="w-4 h-4 text-text-secondary" />
                       Settings

@@ -14,11 +14,11 @@ from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).resolve().parent.parent.parent / "sparkup.db"
+DB_PATH = Path(__file__).resolve().parent.parent.parent / "lifeops.db"
 
 
 class DatabaseService:
-    """Thread-safe SQLite database for all SparkUp collections."""
+    """Thread-safe SQLite database for all LifeOps collections."""
 
     def __init__(self, db_path: str | Path = DB_PATH) -> None:
         self._db_path = str(db_path)

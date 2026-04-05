@@ -3,23 +3,30 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/lib/store";
+import { getGmailConnectionStatus } from "@/lib/api";
 
 /**
  * Public landing page after Google OAuth callback.
- * Sets gmailConnected, then sends authenticated users to Inbox and others to Login
- * (so AuthGuard does not block the flow).
+ * Syncs Gmail connection from the server (real token, not demo), then routes on.
  */
 export default function GmailConnectedPage() {
   const router = useRouter();
 
   useEffect(() => {
-    useAppStore.getState().setGmailConnected(true);
-    const authed = useAppStore.getState().isAuthenticated;
-    if (authed) {
-      router.replace("/inbox");
-    } else {
-      router.replace("/login?gmail=connected");
-    }
+    (async () => {
+      try {
+        const s = await getGmailConnectionStatus();
+        useAppStore.getState().setGmailConnected(Boolean(s.connected));
+      } catch {
+        useAppStore.getState().setGmailConnected(false);
+      }
+      const authed = useAppStore.getState().isAuthenticated;
+      if (authed) {
+        router.replace("/inbox");
+      } else {
+        router.replace("/login?gmail=connected");
+      }
+    })();
   }, [router]);
 
   return (

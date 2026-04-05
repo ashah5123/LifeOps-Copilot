@@ -130,7 +130,7 @@ function toICSDataUri(event: CalendarEvent) {
   const ics = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//SparkUp//EN",
+    "PRODID:-//LifeOps//EN",
     "BEGIN:VEVENT",
     `DTSTART:${startISO}`,
     `DTEND:${endISO}`,
@@ -156,12 +156,13 @@ export default function CalendarPage() {
     (async () => {
       try {
         const rows = await listCalendarEvents();
-        if (cancelled) return;
+        let base: CalendarEvent[] = [];
         if (rows.length) {
-          setEvents(rows.map((r) => apiEventToCalendarEvent(r as Record<string, unknown>)));
+          base = rows.map((r) => apiEventToCalendarEvent(r as Record<string, unknown>));
         } else {
-          setEvents(mockCalendarEvents);
+          base = mockCalendarEvents;
         }
+        if (!cancelled) setEvents(base);
       } catch {
         if (!cancelled) setEvents(mockCalendarEvents);
       }
@@ -370,7 +371,7 @@ export default function CalendarPage() {
             <div>
               <p className="text-sm font-semibold text-text-primary">Google Calendar</p>
               <p className="text-xs text-text-secondary mt-0.5 max-w-xl">
-                SparkUp keeps your schedule in the app. Use the button to open Google Calendar alongside it. True
+                LifeOps keeps your schedule in the app. Use the button to open Google Calendar alongside it. True
                 two-way sync needs the Google Calendar API (extra OAuth scope); that can be added next to pull events
                 into this grid automatically.
               </p>
@@ -625,7 +626,7 @@ export default function CalendarPage() {
                 <p className="text-xs font-medium text-text-secondary mb-2">
                   Add to external calendar
                 </p>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <a
                     href={toGoogleCalendarUrl(selectedEvent)}
                     target="_blank"
@@ -639,7 +640,7 @@ export default function CalendarPage() {
                     download={`${selectedEvent.title.replace(/\s+/g, "_")}.ics`}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 text-text-primary hover:bg-gray-200 transition-colors"
                   >
-                    Add to Apple Calendar
+                    Download .ics
                   </a>
                 </div>
               </div>

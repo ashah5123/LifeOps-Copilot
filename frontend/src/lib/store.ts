@@ -2,11 +2,21 @@
 
 import { create } from "zustand";
 
+const STORAGE_KEY = "lifeops-state";
+const LEGACY_STORAGE_KEY = "sparkup-state";
+
 // --- localStorage helpers (SSR-safe) ---
 function loadState(): Partial<PersistedState> {
   if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem("sparkup-state");
+    let raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (raw) {
+        localStorage.setItem(STORAGE_KEY, raw);
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    }
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -16,7 +26,12 @@ function loadState(): Partial<PersistedState> {
 function saveState(s: PersistedState) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem("sparkup-state", JSON.stringify(s));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    try {
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   } catch { /* quota exceeded – ignore */ }
 }
 
@@ -113,6 +128,7 @@ interface AppState {
   setMonthlyBudget: (v: number) => void;
   budgetEntries: BudgetEntry[];
   addBudgetEntry: (e: BudgetEntry) => void;
+  replaceBudgetEntries: (entries: BudgetEntry[]) => void;
   updateBudgetEntry: (id: string, patch: Partial<BudgetEntry>) => void;
   removeBudgetEntry: (id: string) => void;
 
@@ -152,7 +168,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   logout: () => {
     set({ isAuthenticated: false, user: null, gmailConnected: false, authToken: null });
-    if (typeof window !== "undefined") localStorage.removeItem("sparkup-state");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
   },
   clearAuthSession: () => {
     set({ isAuthenticated: false, user: null, authToken: null });
@@ -180,7 +199,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         document.documentElement.className = `${newTheme} h-full`;
         document.documentElement.style.colorScheme = newTheme;
         try {
-          localStorage.setItem("sparkup-theme", newTheme);
+          localStorage.setItem("lifeops-theme", newTheme);
+          localStorage.removeItem("sparkup-theme");
         } catch {
           /* ignore */
         }
@@ -195,7 +215,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       document.documentElement.className = `${t} h-full`;
       document.documentElement.style.colorScheme = t;
       try {
-        localStorage.setItem("sparkup-theme", t);
+        localStorage.setItem("lifeops-theme", t);
+        localStorage.removeItem("sparkup-theme");
       } catch {
         /* ignore */
       }
@@ -218,6 +239,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   budgetEntries: persisted.budgetEntries ?? [],
   addBudgetEntry: (e) => {
     const entries = [...get().budgetEntries, e];
+    set({ budgetEntries: entries });
+    saveState({ ...extractPersisted(get()), budgetEntries: entries });
+  },
+  replaceBudgetEntries: (entries) => {
     set({ budgetEntries: entries });
     saveState({ ...extractPersisted(get()), budgetEntries: entries });
   },

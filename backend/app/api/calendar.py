@@ -245,11 +245,6 @@ def delete_event(event_id: str) -> None:
         raise HTTPException(status_code=404, detail="event not found")
 
 
-@router.post("/sync-google")
-def sync_google_calendar() -> dict[str, str]:
-    return {"status": "connected-in-demo-mode"}
-
-
 # ------------------------------------------------------------------
 # Study planning request models
 # ------------------------------------------------------------------

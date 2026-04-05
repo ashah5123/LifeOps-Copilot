@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.core.dependencies import agent_runner, gmail_service
+from app.services.gmail_service import GmailAPIError, GmailNotConnectedError
 
 router = APIRouter(prefix="/inbox", tags=["inbox"])
 
@@ -82,23 +83,38 @@ def get_inbox_actions() -> list[dict[str, str]]:
 
 
 # ------------------------------------------------------------------
+# GET /api/inbox/gmail/status
+# ------------------------------------------------------------------
+
+
+@router.get("/gmail/status")
+def gmail_connection_status() -> dict[str, bool]:
+    """True when a non-demo OAuth token is stored (server can call Gmail API)."""
+    return gmail_service.connection_status()
+
+
+# ------------------------------------------------------------------
 # GET /api/inbox/gmail/messages
 # ------------------------------------------------------------------
 
 @router.get("/gmail/messages")
 def list_gmail_messages() -> list[dict[str, Any]]:
-    """Return recent message summaries.
-
-    If Gmail is connected, returns real messages.
-    Otherwise returns mock/demo data.
-    """
-    return gmail_service.list_messages()
+    """Return recent Gmail summaries, or [] when not connected (never mock data)."""
+    try:
+        return gmail_service.list_messages()
+    except GmailAPIError as exc:
+        raise HTTPException(status_code=502, detail=exc.message) from exc
 
 
 @router.get("/gmail/messages/{message_id}")
 def get_gmail_message(message_id: str) -> dict[str, object]:
     """Return one message with full MIME body (plain text or HTML stripped)."""
-    out = gmail_service.get_message(message_id)
+    try:
+        out = gmail_service.get_message(message_id)
+    except GmailNotConnectedError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GmailAPIError as exc:
+        raise HTTPException(status_code=502, detail=exc.message) from exc
     if not out:
         raise HTTPException(status_code=404, detail="Message not found")
     return out
@@ -115,10 +131,15 @@ def send_gmail_message(payload: GmailSendPayload) -> dict[str, str]:
     Human-in-the-loop: the frontend must only call this after the user
     clicks 'Confirm Send'.
     """
-    return gmail_service.send_message(
-        to_email=payload.toEmail,
-        subject=payload.subject,
-        body=payload.body,
-        thread_id=payload.threadId,
-        in_reply_to_message_id=payload.inReplyToMessageId,
-    )
+    try:
+        return gmail_service.send_message(
+            to_email=payload.toEmail,
+            subject=payload.subject,
+            body=payload.body,
+            thread_id=payload.threadId,
+            in_reply_to_message_id=payload.inReplyToMessageId,
+        )
+    except GmailNotConnectedError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GmailAPIError as exc:
+        raise HTTPException(status_code=502, detail=exc.message) from exc

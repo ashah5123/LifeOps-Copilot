@@ -1,5 +1,5 @@
 /**
- * SparkUp / LifeOps Copilot — API client mapped to FastAPI backend routes.
+ * LifeOps Copilot — API client for the FastAPI backend.
  * Base URL: NEXT_PUBLIC_API_URL or http://localhost:8000
  */
 
@@ -10,7 +10,8 @@ export { API_BASE };
 function authHeaders(): HeadersInit {
   if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem("sparkup-state");
+    const raw =
+      localStorage.getItem("lifeops-state") || localStorage.getItem("sparkup-state");
     if (!raw) return {};
     const tok = (JSON.parse(raw) as { authToken?: string | null }).authToken;
     if (tok) return { Authorization: `Bearer ${tok}` };
@@ -117,6 +118,9 @@ export const authLogin = (body: { email: string; password: string }) =>
 export const authMe = () => request<AuthUser>("/api/auth/me");
 
 // --- Inbox ---
+export const getGmailConnectionStatus = () =>
+  request<{ connected: boolean; oauthConfigured: boolean }>("/api/inbox/gmail/status");
+
 export const getGmailMessages = () =>
   request<import("@/types").GmailMessage[]>("/api/inbox/gmail/messages");
 
@@ -395,9 +399,6 @@ export const deleteCalendarEvent = (id: string) =>
     method: "DELETE",
   });
 
-export const syncGoogleCalendar = () =>
-  request<Record<string, string>>("/api/calendar/sync-google", { method: "POST" });
-
 // --- Calendar: study & syllabus ---
 export const parseSyllabus = (syllabusText: string) =>
   request<Record<string, unknown>>("/api/calendar/syllabus/parse", {
@@ -541,8 +542,10 @@ export const listBudgetGoals = () => request<unknown[]>("/api/budget/goals");
 export const getBudgetGoalsProgress = () =>
   request<Record<string, unknown>>("/api/budget/goals/progress");
 
-export const getBudgetInsights = () =>
-  request<{ insights: unknown[]; recommendations: unknown[] }>("/api/budget/insights");
+export const getBudgetInsights = (month?: string) => {
+  const q = month ? `?month=${encodeURIComponent(month)}` : "";
+  return request<{ insights: unknown[]; recommendations: unknown[] }>(`/api/budget/insights${q}`);
+};
 
 export const getBudgetMonthlyReport = (month: string) =>
   request<Record<string, unknown>>(`/api/budget/reports/monthly/${encodeURIComponent(month)}`);

@@ -36,17 +36,22 @@ export default function Sidebar() {
   const pathname = usePathname();
   const user = useAppStore((s) => s.user);
   const theme = useAppStore((s) => s.theme);
+  const displayFirst =
+    user?.name?.trim().split(/\s+/)[0] || "there";
 
   return (
     <>
-      {/* Desktop Sidebar — solid dark rail so nav stays readable in any theme */}
-      <aside className="hidden md:flex flex-col w-64 h-screen fixed left-0 top-0 z-40 border-r border-zinc-800 bg-zinc-950">
+      {/* Desktop Sidebar — theme-aware rail via CSS variables */}
+      <aside
+        className="hidden md:flex flex-col w-64 h-screen fixed left-0 top-0 z-40 border-r"
+        style={{ background: "var(--sb)", borderColor: "var(--bd)" }}
+      >
         {/* Logo with Sparkles */}
         <Link
           href="/dashboard"
           className="relative flex items-center gap-3 px-6 py-5 border-b transition-opacity hover:opacity-95"
           style={{ borderColor: "var(--bd)" }}
-          aria-label="SparkUp home — go to dashboard"
+          aria-label="LifeOps home — go to dashboard"
         >
           <div className="absolute inset-0 overflow-hidden">
             <SparklesEffect particleCount={15} particleColor="#5E6AD2" className="absolute inset-0" />
@@ -54,7 +59,7 @@ export default function Sidebar() {
           <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center shadow-lg shadow-primary/20">
             <SparklesIcon className="w-5 h-5 text-white" />
           </div>
-          <span className="relative text-xl font-bold text-white tracking-tight">SparkUp</span>
+          <span className="relative text-xl font-bold text-white tracking-tight">LifeOps</span>
         </Link>
 
         {/* Navigation — micro-interactions (Dribbble-style hover lift + sweep) */}
@@ -72,10 +77,10 @@ export default function Sidebar() {
                   whileTap={{ scale: 0.98 }}
                   transition={{ type: "spring", stiffness: 420, damping: 22 }}
                   className={`
-                    relative flex items-center gap-2.5 overflow-hidden rounded-xl border border-zinc-700/60 bg-zinc-900/50 px-3 py-2 text-[13px] font-medium shadow-[0_6px_24px_-10px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors duration-200
+                    relative flex items-center gap-2.5 overflow-hidden rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[13px] font-medium shadow-[0_6px_24px_-10px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors duration-200
                     ${isActive
-                      ? "bg-zinc-800 text-white shadow-md shadow-primary/15 ring-1 ring-primary/40"
-                      : "text-zinc-300 hover:border-zinc-600 hover:bg-zinc-800/80 hover:text-white"
+                      ? "bg-white/12 text-white shadow-md shadow-primary/15 ring-1 ring-primary/30"
+                      : "text-white/65 hover:border-white/18 hover:bg-white/10 hover:text-white"
                     }
                   `}
                 >
@@ -93,7 +98,7 @@ export default function Sidebar() {
                     />
                   )}
                   <motion.div
-                    className="relative z-10 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-600/50 bg-zinc-950/80"
+                    className="relative z-10 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/25"
                     whileHover={{ scale: 1.08, y: -1 }}
                     transition={{ type: "spring", stiffness: 400, damping: 18 }}
                   >
@@ -116,14 +121,14 @@ export default function Sidebar() {
         {/* User section (display only — no menu on click) */}
         <div className="border-t px-4 py-4" style={{ borderColor: "var(--bd)" }}>
           <div className="flex items-center gap-3 px-2">
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-primary/40 bg-gradient-to-br from-primary/50 to-primary/25">
-              <span className="text-xs font-semibold text-white">{user?.initials || "V"}</span>
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-primary/30 bg-gradient-to-br from-primary/40 to-primary/20">
+              <span className="text-xs font-semibold text-white">{user?.initials || "U"}</span>
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-zinc-100">
-                {user?.name?.trim().split(/\s+/)[0] || "there"}
+              <p className="truncate text-sm font-medium text-white">
+                {displayFirst}
               </p>
-              <p className="text-xs text-zinc-500">Student</p>
+              <p className="text-xs text-white/40">Student</p>
             </div>
           </div>
         </div>

@@ -4,7 +4,7 @@ import ToastWrapper from "@/components/ui/ToastWrapper";
 import ThemeInit from "@/components/layout/ThemeInit";
 
 export const metadata: Metadata = {
-  title: "SparkUp — AI-Powered Student Productivity",
+  title: "LifeOps Copilot — AI-Powered Student Productivity",
   description: "Manage your inbox, career, calendar, and budget with AI assistance.",
 };
 
@@ -22,12 +22,12 @@ export default function RootLayout({
               (function() {
                 try {
                   var theme = 'dark';
-                  var raw = localStorage.getItem('sparkup-state');
+                  var raw = localStorage.getItem('lifeops-state') || localStorage.getItem('sparkup-state');
                   if (raw) {
                     var s = JSON.parse(raw);
                     if (s.theme === 'light' || s.theme === 'dark') theme = s.theme;
                   } else {
-                    var t = localStorage.getItem('sparkup-theme');
+                    var t = localStorage.getItem('lifeops-theme') || localStorage.getItem('sparkup-theme');
                     if (t === 'light' || t === 'dark') theme = t;
                   }
                   document.documentElement.className = theme + ' h-full';

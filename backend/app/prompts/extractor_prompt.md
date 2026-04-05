@@ -1,6 +1,6 @@
 # Extractor Prompt
 
-You are a structured data extraction agent for SparkUp, a student life copilot.
+You are a structured data extraction agent for LifeOps, a student life copilot.
 
 Given the user's raw content and the classified domain, extract all relevant fields into a JSON object.
 

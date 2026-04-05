@@ -34,16 +34,42 @@ class BudgetInsightsService:
             if e.get("entry_type") == entry_type
         )
 
+    def _resolve_month(self, month: str | None) -> str:
+        if month and len(month) >= 7 and month[4] == "-":
+            try:
+                y = int(month[:4])
+                m = int(month[5:7])
+                if 1 <= m <= 12:
+                    return f"{y:04d}-{m:02d}"
+            except ValueError:
+                pass
+        return date.today().strftime("%Y-%m")
+
+    def _shift_month_str(self, ym: str, delta: int) -> str:
+        y = int(ym[:4])
+        mo = int(ym[5:7])
+        d = date(y, mo, 1) + relativedelta(months=delta)
+        return d.strftime("%Y-%m")
+
+    def _total_income(self, month: str) -> float:
+        """Sum all money-in rows (income, gift, scholarship) for the dashboard."""
+        total = 0.0
+        for e in self._entries_for_month(month):
+            et = str(e.get("entry_type", "")).lower()
+            if et in ("income", "gift", "scholarship"):
+                total += float(e.get("amount", 0))
+        return total
+
     # ------------------------------------------------------------------
     # generate_insights
     # ------------------------------------------------------------------
 
-    def generate_insights(self) -> list[dict]:
+    def generate_insights(self, month: str | None = None) -> list[dict]:
         insights = []
-        current = self._month_label(0)
-        previous = self._month_label(-1)
+        current = self._resolve_month(month)
+        previous = self._shift_month_str(current, -1)
 
-        current_income = self._total(current, "income")
+        current_income = self._total_income(current)
         current_expenses = self._total(current, "expense")
         prev_expenses = self._total(previous, "expense")
         net_savings = current_income - current_expenses
@@ -161,11 +187,11 @@ class BudgetInsightsService:
     # get_recommendations
     # ------------------------------------------------------------------
 
-    def get_recommendations(self) -> list[dict]:
+    def get_recommendations(self, month: str | None = None) -> list[dict]:
         recommendations = []
-        current = self._month_label(0)
+        current = self._resolve_month(month)
 
-        current_income = self._total(current, "income")
+        current_income = self._total_income(current)
         current_expenses = self._total(current, "expense")
         current_cats = self._totals_by_category(current, "expense")
         net_savings = current_income - current_expenses

@@ -16,11 +16,13 @@ import Badge from "@/components/ui/Badge";
 import ConnectGmailButton from "@/components/inbox/ConnectGmailButton";
 import { useAppStore } from "@/lib/store";
 import {
+  getGmailConnectionStatus,
   getGmailMessages,
   getGmailMessageDetail,
   sendGmailReply,
   processInboxMessage,
   draftInboxReply,
+  getGoogleLoginUrl,
 } from "@/lib/api";
 import { htmlToPlainText } from "@/lib/html";
 import type { GmailMessage } from "@/types";
@@ -314,18 +316,58 @@ export default function InboxPage() {
   const [selectedMessage, setSelectedMessage] = useState<GmailMessage | null>(null);
   const [messages, setMessages] = useState<GmailMessage[]>([]);
   const [inboxLoading, setInboxLoading] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [oauthConfigured, setOauthConfigured] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [reconnecting, setReconnecting] = useState(false);
 
-  // Check for OAuth callback and load messages
+  // Strip legacy query param; real state comes from the server
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("gmail") === "connected") {
-      setGmailConnected(true);
       window.history.replaceState({}, "", "/inbox");
     }
-  }, [setGmailConnected]);
+  }, []);
 
-  // Fetch messages from backend when connected — no mock list; show loading until loaded
+  // Always sync Gmail connection from API (never trust stale localStorage alone)
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setStatusLoading(true);
+      try {
+        const s = await getGmailConnectionStatus();
+        if (cancelled) return;
+        setGmailConnected(Boolean(s.connected));
+        setOauthConfigured(Boolean(s.oauthConfigured));
+      } catch {
+        if (!cancelled) {
+          setGmailConnected(false);
+          setOauthConfigured(true);
+        }
+      } finally {
+        if (!cancelled) setStatusLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [setGmailConnected, refreshKey]);
+
+  const openGoogleOauth = async () => {
+    setReconnecting(true);
+    try {
+      const { authUrl } = await getGoogleLoginUrl();
+      if (!authUrl?.startsWith("http")) throw new Error("Invalid auth URL");
+      window.location.assign(authUrl);
+    } catch {
+      addToast({ message: "Could not start Google sign-in. Is the API running?", type: "error" });
+      setReconnecting(false);
+    }
+  };
+
+  // Fetch live messages only when the server reports a real Gmail token
+  useEffect(() => {
+    if (statusLoading) return;
     if (!gmailConnected) {
       setMessages([]);
       setInboxLoading(false);
@@ -360,14 +402,15 @@ export default function InboxPage() {
         });
         setMessages(mapped);
       })
-      .catch(() => {
+      .catch((err) => {
         setMessages([]);
-        addToast({ message: "Could not load messages. Check the API and Gmail connection.", type: "error" });
+        const detail = err instanceof Error ? err.message : "Could not load Gmail.";
+        addToast({ message: detail, type: "error" });
       })
       .finally(() => setInboxLoading(false));
-  }, [gmailConnected, addToast]);
+  }, [gmailConnected, statusLoading, addToast]);
 
-  // Load full MIME-decoded body when a message is selected (live or mock Gmail from API).
+  // Load full MIME-decoded body when a message is selected (live Gmail only).
   useEffect(() => {
     if (!gmailConnected || !selectedMessage) return;
     const id = selectedMessage.id;
@@ -414,26 +457,69 @@ export default function InboxPage() {
   return (
     <AppShell>
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Inbox</h1>
             <p className="text-sm text-text-secondary mt-0.5">
-              {gmailConnected
-                ? inboxLoading
-                  ? "Loading messages…"
-                  : `${messages.length} message${messages.length === 1 ? "" : "s"}`
-                : "Connect your Gmail to get started"}
+              {statusLoading
+                ? "Checking Gmail connection…"
+                : gmailConnected
+                  ? inboxLoading
+                    ? "Loading messages…"
+                    : `${messages.length} message${messages.length === 1 ? "" : "s"}`
+                  : "Connect Gmail on this device to load your real inbox (no demo mail)."}
             </p>
           </div>
-          {gmailConnected && (
-            <Badge variant="success">Gmail Connected</Badge>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {gmailConnected && !statusLoading ? (
+              <>
+                <Badge variant="success">Gmail Connected</Badge>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<ArrowPathIcon className="w-4 h-4" />}
+                  onClick={() => setRefreshKey((k) => k + 1)}
+                  disabled={statusLoading || inboxLoading}
+                >
+                  Refresh
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => void openGoogleOauth()} loading={reconnecting}>
+                  Reconnect Gmail
+                </Button>
+              </>
+            ) : null}
+          </div>
         </div>
 
-        {!gmailConnected ? (
-          <Card>
-            <ConnectGmailButton />
+        {statusLoading ? (
+          <Card padding="md">
+            <div className="flex flex-col items-center justify-center gap-3 py-16">
+              <div className="h-9 w-9 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-text-secondary">Checking connection…</p>
+            </div>
           </Card>
+        ) : !gmailConnected ? (
+          <div className="space-y-4">
+            {!oauthConfigured ? (
+              <Card padding="md" className="border-amber-500/30 bg-amber-500/5">
+                <p className="text-sm font-medium text-text-primary">Google OAuth is not configured on the server</p>
+                <p className="text-xs text-text-secondary mt-2 leading-relaxed">
+                  Set <code className="text-[11px] bg-surface px-1 rounded">GOOGLE_CLIENT_ID</code>,{" "}
+                  <code className="text-[11px] bg-surface px-1 rounded">GOOGLE_CLIENT_SECRET</code>, and{" "}
+                  <code className="text-[11px] bg-surface px-1 rounded">GOOGLE_REDIRECT_URI</code> in{" "}
+                  <code className="text-[11px] bg-surface px-1 rounded">backend/.env</code>, restart the API, and try
+                  again.
+                </p>
+              </Card>
+            ) : null}
+            <Card>
+              <ConnectGmailButton />
+            </Card>
+            <p className="text-xs text-text-secondary text-center max-w-lg mx-auto">
+              Signed in with email/password? Use <strong>Connect Gmail</strong> here to authorize the same Google
+              account. LifeOps stores tokens on the server and only reads/sends mail after you confirm.
+            </p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 h-[calc(100vh-200px)]">
             {/* Email List */}

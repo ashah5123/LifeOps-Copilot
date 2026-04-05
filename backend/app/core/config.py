@@ -8,16 +8,16 @@ _ENV_PATH = _BACKEND_ROOT / ".env"
 
 
 class Settings(BaseSettings):
-    app_name: str = "SparkUp API"
+    app_name: str = "LifeOps API"
     api_prefix: str = "/api"
     environment: str = "development"
 
     # GCP core
-    google_cloud_project: str = "sparkup-dev"
+    google_cloud_project: str = "lifeops-dev"
     vertex_location: str = "us-central1"
     vertex_model_name: str = "gemini-2.5-flash"
-    firestore_project_id: str = "sparkup-dev"
-    gcs_bucket_name: str = "sparkup-uploads"
+    firestore_project_id: str = "lifeops-dev"
+    gcs_bucket_name: str = "lifeops-uploads"
     document_ai_processor_id: str = ""
 
     # Google OAuth
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # MongoDB (optional — when empty, API uses in-memory store)
     mongodb_uri: str = ""
-    mongodb_database: str = "sparkup"
+    mongodb_database: str = "lifeops"
 
     # JWT (set a long random secret in production)
     jwt_secret: str = "change-me-in-production-use-openssl-rand-hex-32"
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     @property
     def is_gcp_configured(self) -> bool:
         """True when real GCP credentials are available."""
-        return self.google_cloud_project != "sparkup-dev" and self.google_cloud_project != ""
+        return self.google_cloud_project != "lifeops-dev" and self.google_cloud_project != ""
 
     @property
     def is_oauth_configured(self) -> bool:

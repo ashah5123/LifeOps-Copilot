@@ -1,6 +1,6 @@
 """Authentication service — JWT-based auth with password hashing.
 
-Provides register, login, and token verification for the SparkUp API.
+Provides register, login, and token verification for the LifeOps API.
 """
 
 import logging
@@ -13,7 +13,7 @@ from app.services.database_service import DatabaseService
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEY = "sparkup-hackathon-secret-key-2026"  # In production, use env var
+SECRET_KEY = "lifeops-dev-secret-key-2026"  # In production, use env var
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 72
 

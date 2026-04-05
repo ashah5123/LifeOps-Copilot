@@ -186,10 +186,15 @@ def get_goals_progress() -> dict:
 # ------------------------------------------------------------------
 
 @router.get("/insights")
-def get_budget_insights() -> dict:
+def get_budget_insights(
+    month: str | None = Query(
+        default=None,
+        description="Calendar month YYYY-MM (defaults to server current month)",
+    ),
+) -> dict:
     return {
-        "insights": insights_service.generate_insights(),
-        "recommendations": insights_service.get_recommendations(),
+        "insights": insights_service.generate_insights(month),
+        "recommendations": insights_service.get_recommendations(month),
     }
 
 

@@ -84,7 +84,7 @@ export default function SettingsPage() {
             Settings
           </h1>
           <p className="text-sm text-text-secondary mt-1">
-            Customize your SparkUp experience
+            Customize your LifeOps experience
           </p>
         </div>
 

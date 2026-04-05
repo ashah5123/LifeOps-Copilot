@@ -198,7 +198,7 @@ python -m scripts.populate_demo_data
 |-----------------|--------|-----------------------------------------------------------------------------------|
 | `uploadId`      | string | UUID generated at upload time                                                     |
 | `fileName`      | string | Original filename                                                                 |
-| `fileUrl`       | string | GCS URL (mocked as `https://storage.googleapis.com/sparkup-uploads/<filename>`)   |
+| `fileUrl`       | string | GCS URL (mocked as `https://storage.googleapis.com/lifeops-uploads/<filename>`)   |
 | `status`        | string | `uploaded` if no text was extracted, `processed` if extraction succeeded          |
 | `extractedText` | string | Text extracted from the file via PDF parsing or OCR (empty string if unavailable) |
 
@@ -207,7 +207,7 @@ python -m scripts.populate_demo_data
 {
   "uploadId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "fileName": "syllabus_spring2026.pdf",
-  "fileUrl": "https://storage.googleapis.com/sparkup-uploads/syllabus_spring2026.pdf",
+  "fileUrl": "https://storage.googleapis.com/lifeops-uploads/syllabus_spring2026.pdf",
   "status": "processed",
   "extractedText": "CS 3310 Data Structures — Spring 2026\nExam 1: Feb 20..."
 }

@@ -1,9 +1,9 @@
-# GCP Setup — SparkUp Hackathon
+# GCP Setup — LifeOps Copilot (team SparkUp)
 
 ## 1. Create a GCP Project
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project (e.g., `sparkup-hackathon`).
+2. Create a new project (e.g., `lifeops-hackathon`).
 3. Note the **Project ID** — you will use it as `GOOGLE_CLOUD_PROJECT`.
 
 ## 2. Enable Required APIs
@@ -27,7 +27,7 @@ Open **APIs & Services → Library** and enable:
 
 1. Go to **APIs & Services → OAuth consent screen**.
 2. Select **External** user type.
-3. Fill in app name (`SparkUp`) and support email.
+3. Fill in app name (`LifeOps Copilot`) and support email.
 4. Add scopes:
    - `https://www.googleapis.com/auth/gmail.readonly`
    - `https://www.googleapis.com/auth/gmail.send`
@@ -59,7 +59,7 @@ Open **APIs & Services → Library** and enable:
 ## 6. Set Up Cloud Storage
 
 1. Go to **Cloud Storage → Create bucket**.
-2. Name it (e.g., `sparkup-uploads`).
+2. Name it (e.g., `lifeops-uploads`).
 3. For hackathon: the backend uses a mock storage service by default.
 
 ## 7. (Optional) Set Up Document AI
@@ -73,11 +73,11 @@ Open **APIs & Services → Library** and enable:
 Create a `.env` file in `backend/` with:
 
 ```env
-GOOGLE_CLOUD_PROJECT=sparkup-hackathon
+GOOGLE_CLOUD_PROJECT=lifeops-hackathon
 VERTEX_LOCATION=us-central1
 VERTEX_MODEL_NAME=gemini-2.5-flash
-FIRESTORE_PROJECT_ID=sparkup-hackathon
-GCS_BUCKET_NAME=sparkup-uploads
+FIRESTORE_PROJECT_ID=lifeops-hackathon
+GCS_BUCKET_NAME=lifeops-uploads
 GOOGLE_CLIENT_ID=your-client-id-here
 GOOGLE_CLIENT_SECRET=your-client-secret-here
 GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/google/callback

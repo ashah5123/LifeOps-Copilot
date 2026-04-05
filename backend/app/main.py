@@ -48,4 +48,4 @@ app.include_router(approvals.router, prefix=settings.api_prefix)
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"message": "SparkUp API is running"}
+    return {"message": "LifeOps API is running"}

@@ -1,9 +1,7 @@
-"""Gmail service — list and send messages.
+"""Gmail service — list and send messages via the Gmail API.
 
-Supports two modes:
-1. **Live mode** — uses the Gmail API when an OAuth access token is available.
-2. **Mock mode** — returns realistic demo data so the UI works without
-   any Google credentials.
+Requires a real OAuth access token (no mock inbox). When disconnected,
+callers get an empty list or HTTP errors from the API routes.
 """
 
 from __future__ import annotations
@@ -19,8 +17,21 @@ from email.mime.text import MIMEText
 import httpx
 
 from app.services.google_oauth_service import GoogleOAuthService
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class GmailNotConnectedError(Exception):
+    """Raised when Gmail OAuth is not configured or no live token is stored."""
+
+
+class GmailAPIError(Exception):
+    """Raised when the Gmail HTTP API returns an error."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
 
 GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
@@ -75,7 +86,7 @@ def _body_from_payload(payload: dict, fallback_snippet: str) -> str:
 
 
 class GmailService:
-    """Read and send Gmail messages with automatic mock fallback."""
+    """Read and send Gmail messages using stored OAuth tokens."""
 
     def __init__(self, oauth_service: GoogleOAuthService | None = None) -> None:
         self._oauth = oauth_service or GoogleOAuthService()
@@ -88,6 +99,15 @@ class GmailService:
         token = self._oauth.get_stored_access_token()
         return token is not None and not token.startswith("demo-")
 
+    def connection_status(self) -> dict[str, bool]:
+        """Whether the server can call Gmail on behalf of a linked account."""
+        token = self._oauth.get_stored_access_token() or ""
+        demo = not token or str(token).startswith("demo-")
+        return {
+            "connected": not demo,
+            "oauthConfigured": settings.is_oauth_configured,
+        }
+
     def _headers(self) -> dict[str, str]:
         token = self._oauth.get_stored_access_token() or ""
         return {"Authorization": f"Bearer {token}"}
@@ -97,12 +117,9 @@ class GmailService:
     # ------------------------------------------------------------------
 
     def list_messages(self, max_results: int = 10) -> list[dict[str, Any]]:
-        """Return recent Gmail message summaries.
-
-        Falls back to mock data when Gmail is not connected.
-        """
+        """Return recent Gmail message summaries (empty list if not connected)."""
         if not self._is_connected():
-            return self._mock_messages()
+            return []
 
         try:
             resp = httpx.get(
@@ -143,21 +160,13 @@ class GmailService:
                 })
             return results
         except Exception as exc:
-            logger.error("Gmail list_messages failed, returning mock: %s", exc)
-            return self._mock_messages()
+            logger.error("Gmail list_messages failed: %s", exc)
+            raise GmailAPIError(f"Could not load messages from Gmail: {exc}") from exc
 
     def get_message(self, message_id: str) -> dict[str, object]:
         """Fetch one message with ``format=full`` and decoded plain/HTML body."""
         if not self._is_connected():
-            for m in self._mock_messages():
-                if m["id"] == message_id:
-                    snip = str(m.get("snippet", ""))
-                    return {
-                        **m,
-                        "body": f"{snip}\n\n(Mock full body — connect real Gmail for MIME parsing.)",
-                        "isUnread": m.get("isUnread", False),
-                    }
-            return {}
+            raise GmailNotConnectedError("Gmail is not connected. Complete Google sign-in from Inbox.")
 
         try:
             resp = httpx.get(
@@ -186,7 +195,7 @@ class GmailService:
             }
         except Exception as exc:
             logger.error("Gmail get_message failed: %s", exc)
-            return {}
+            raise GmailAPIError(f"Could not load message: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Send message (human-approved only)
@@ -200,15 +209,9 @@ class GmailService:
         thread_id: str | None = None,
         in_reply_to_message_id: str | None = None,
     ) -> dict[str, str]:
-        """Send an email via Gmail API.
-
-        This method should ONLY be called after the user has explicitly
-        approved the message in the UI (human-in-the-loop).
-
-        Falls back to a simulated send when Gmail is not connected.
-        """
+        """Send an email via Gmail API after explicit user approval."""
         if not self._is_connected():
-            return self._mock_send(to_email, subject, body, thread_id=thread_id)
+            raise GmailNotConnectedError("Gmail is not connected. Connect Gmail before sending.")
 
         try:
             mime = MIMEText(body)
@@ -242,65 +245,4 @@ class GmailService:
             }
         except Exception as exc:
             logger.error("Gmail send_message failed: %s", exc)
-            return {
-                "status": "error",
-                "to": to_email,
-                "error": str(exc),
-            }
-
-    # ------------------------------------------------------------------
-    # Mock helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _mock_messages() -> list[dict[str, Any]]:
-        ts = str(int(time.time() * 1000))
-        return [
-            {
-                "id": "mock-msg-1",
-                "threadId": "mock-thread-1",
-                "sender": "Professor Lee <professor@asu.edu>",
-                "subject": "Assignment follow-up",
-                "snippet": "Please send the revised version by tomorrow.",
-                "internalDate": ts,
-                "isUnread": True,
-                "rfc822MessageId": "<mock-1@local>",
-            },
-            {
-                "id": "mock-msg-2",
-                "threadId": "mock-thread-2",
-                "sender": "Career Services <career-services@asu.edu>",
-                "subject": "Resume workshop this Friday",
-                "snippet": "Join us for a hands-on resume review session.",
-                "internalDate": ts,
-                "isUnread": True,
-                "rfc822MessageId": "<mock-2@local>",
-            },
-            {
-                "id": "mock-msg-3",
-                "threadId": "mock-thread-3",
-                "sender": "Club President <club-president@asu.edu>",
-                "subject": "Hackathon team signup",
-                "snippet": "Sign up before Wednesday to secure your spot.",
-                "internalDate": ts,
-                "isUnread": False,
-                "rfc822MessageId": "<mock-3@local>",
-            },
-        ]
-
-    @staticmethod
-    def _mock_send(
-        to_email: str,
-        subject: str,
-        body: str,
-        *,
-        thread_id: str | None = None,
-    ) -> dict[str, str]:
-        return {
-            "status": "sent (mock)",
-            "messageId": "mock-sent-001",
-            "to": to_email,
-            "subject": subject,
-            "preview": body[:120],
-            "threadId": thread_id or "",
-        }
+            raise GmailAPIError(f"Send failed: {exc}") from exc

@@ -20,6 +20,8 @@ class GmailSendPayload(BaseModel):
     toEmail: str
     subject: str
     body: str
+    threadId: str | None = None
+    inReplyToMessageId: str | None = None
 
 
 # ------------------------------------------------------------------
@@ -41,10 +43,25 @@ def process_inbox(payload: InboxPayload) -> dict[str, object]:
 
 @router.post("/draft-reply")
 def draft_reply(payload: InboxPayload) -> dict[str, str]:
-    return {
-        "subject": "Re: Your request",
-        "draft": f"Hello, here is a suggested reply based on: {payload.content[:120]}",
-    }
+    """Generate a draft via the inbox branch of the 6-agent pipeline (ActionAgent draftReply)."""
+    try:
+        result = agent_runner.process_for_domain(payload.content, "inbox")
+        action = result.get("result", {}) or {}
+        draft = str(action.get("draftReply", "") or "").strip()
+        if not draft:
+            extracted = (result.get("extracted") or {}) if isinstance(result.get("extracted"), dict) else {}
+            fields = extracted.get("fields", {}) if isinstance(extracted, dict) else {}
+            summary = str(fields.get("summary", ""))[:200]
+            draft = (
+                f"Hi,\n\nThank you for your message{f' about: {summary}' if summary else ''}.\n\n"
+                "I'll review and follow up shortly.\n\nBest regards"
+            )
+        return {"subject": "Re: Your message", "draft": draft}
+    except Exception:
+        return {
+            "subject": "Re: Your message",
+            "draft": f"Hi,\n\nThanks for reaching out. I've noted: {payload.content[:200]}...\n\nBest regards",
+        }
 
 
 # ------------------------------------------------------------------
@@ -91,4 +108,6 @@ def send_gmail_message(payload: GmailSendPayload) -> dict[str, str]:
         to_email=payload.toEmail,
         subject=payload.subject,
         body=payload.body,
+        thread_id=payload.threadId,
+        in_reply_to_message_id=payload.inReplyToMessageId,
     )

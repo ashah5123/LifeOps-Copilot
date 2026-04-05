@@ -24,7 +24,12 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import { useAppStore } from "@/lib/store";
-import { searchJobs as searchJobsApi, listApplications, createApplication } from "@/lib/api";
+import {
+  searchJobs as searchJobsApi,
+  listApplications,
+  createApplication,
+  applyFromJobListing,
+} from "@/lib/api";
 import { mockApplications, mockCareerSuggestions } from "@/lib/mock-data";
 import type { Application } from "@/types";
 
@@ -885,12 +890,37 @@ export default function CareerPage() {
     setApplyModalOpen(true);
   }
 
-  function handleSubmitApplication() {
+  async function handleSubmitApplication() {
+    if (!applyTarget) return;
     setApplySubmitting(true);
-    setTimeout(() => {
-      setApplySubmitting(false);
+    try {
+      try {
+        await applyFromJobListing(applyTarget.id, {
+          resume_text: resumeFile?.text ?? "",
+          cover_letter: "",
+          notes: "Submitted from SparkUp career search",
+        });
+      } catch {
+        await createApplication({
+          company: applyTarget.company,
+          role: applyTarget.role,
+          status: "applied",
+          applied_date: new Date().toISOString().slice(0, 10),
+          job_url: "",
+          job_description: applyTarget.description.slice(0, 2000),
+          notes: "Manual / mock job listing",
+        });
+      }
+      const rows = await listApplications();
+      if (rows.length) {
+        setApplications(rows.map((r) => mapApiApplication(r as Record<string, unknown>)));
+      }
       setApplySuccess(true);
-    }, 2000);
+    } catch {
+      addToast({ message: "Could not submit application to the server", type: "error" });
+    } finally {
+      setApplySubmitting(false);
+    }
   }
 
   function closeApplyModal() {

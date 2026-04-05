@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
@@ -18,74 +19,9 @@ import Card from "@/components/ui/Card";
 import UploadBox from "@/components/upload/UploadBox";
 import TodayFeed from "@/components/feed/TodayFeed";
 import { useAppStore } from "@/lib/store";
+import { getDashboardSummary, getTodayFeed } from "@/lib/api";
 import { mockDashboardSummary, mockFeedItems } from "@/lib/mock-data";
-import type { FeedItem } from "@/types";
-
-const heroCards = [
-  {
-    label: "Emails to Reply",
-    value: mockDashboardSummary.emailsNeedingReply,
-    icon: EnvelopeIcon,
-    color: "text-blue-600",
-    bg: "bg-blue-100",
-  },
-  {
-    label: "Upcoming Deadlines",
-    value: mockDashboardSummary.deadlines,
-    icon: ClockIcon,
-    color: "text-red-600",
-    bg: "bg-red-100",
-  },
-  {
-    label: "Tasks Today",
-    value: mockDashboardSummary.tasksToday,
-    icon: CheckCircleIcon,
-    color: "text-green-600",
-    bg: "bg-green-100",
-  },
-  {
-    label: "Budget Alerts",
-    value: mockDashboardSummary.budgetAlerts,
-    icon: ExclamationTriangleIcon,
-    color: "text-amber-600",
-    bg: "bg-amber-100",
-  },
-];
-
-const smartCards = [
-  {
-    title: "Inbox",
-    insight: mockDashboardSummary.inboxInsight,
-    count: mockDashboardSummary.emailsNeedingReply,
-    icon: InboxIcon,
-    href: "/inbox",
-    color: "from-blue-500 to-blue-600",
-  },
-  {
-    title: "Career",
-    insight: mockDashboardSummary.careerInsight,
-    count: 3,
-    icon: BriefcaseIcon,
-    href: "/career",
-    color: "from-purple-500 to-purple-600",
-  },
-  {
-    title: "Calendar",
-    insight: mockDashboardSummary.calendarInsight,
-    count: 4,
-    icon: CalendarDaysIcon,
-    href: "/calendar",
-    color: "from-green-500 to-green-600",
-  },
-  {
-    title: "Budget",
-    insight: mockDashboardSummary.budgetInsight,
-    count: mockDashboardSummary.budgetAlerts,
-    icon: BanknotesIcon,
-    href: "/budget",
-    color: "from-amber-500 to-amber-600",
-  },
-];
+import type { FeedItem, DashboardSummary } from "@/types";
 
 const container = {
   hidden: { opacity: 0 },
@@ -110,21 +46,106 @@ export default function DashboardPage() {
   const displayName = user?.name || "there";
   const greeting = getTimeBasedGreeting();
 
-  // Merge real agent feed items with mock items, real ones first
-  const realFeedItems: FeedItem[] = agentFeedItems.map((item) => ({
-    id: item.id,
-    text: item.text,
-    category: item.category,
-    actionLabel: item.actionLabel,
-    actionUrl: item.actionUrl,
-    timestamp: item.timestamp,
+  const [apiSummary, setApiSummary] = useState<DashboardSummary | null>(null);
+  const [apiFeed, setApiFeed] = useState<FeedItem[] | null>(null);
+
+  useEffect(() => {
+    getDashboardSummary()
+      .then((s) => setApiSummary(s as DashboardSummary))
+      .catch(() => setApiSummary(null));
+    getTodayFeed()
+      .then((f) => setApiFeed(f as FeedItem[]))
+      .catch(() => setApiFeed(null));
+  }, []);
+
+  const summary = apiSummary ?? mockDashboardSummary;
+
+  const heroCards = useMemo(
+    () => [
+      {
+        label: "Emails to Reply",
+        value: summary.emailsNeedingReply,
+        icon: EnvelopeIcon,
+        color: "text-blue-600",
+        bg: "bg-blue-100",
+      },
+      {
+        label: "Upcoming Deadlines",
+        value: summary.deadlines,
+        icon: ClockIcon,
+        color: "text-red-600",
+        bg: "bg-red-100",
+      },
+      {
+        label: "Tasks Today",
+        value: summary.tasksToday,
+        icon: CheckCircleIcon,
+        color: "text-green-600",
+        bg: "bg-green-100",
+      },
+      {
+        label: "Budget Alerts",
+        value: summary.budgetAlerts,
+        icon: ExclamationTriangleIcon,
+        color: "text-amber-600",
+        bg: "bg-amber-100",
+      },
+    ],
+    [summary],
+  );
+
+  const smartCards = useMemo(
+    () => [
+      {
+        title: "Inbox",
+        insight: summary.inboxInsight,
+        count: summary.emailsNeedingReply,
+        icon: InboxIcon,
+        href: "/inbox",
+        color: "from-blue-500 to-blue-600",
+      },
+      {
+        title: "Career",
+        insight: summary.careerInsight,
+        count: summary.careerTracked ?? summary.tasksToday,
+        icon: BriefcaseIcon,
+        href: "/career",
+        color: "from-purple-500 to-purple-600",
+      },
+      {
+        title: "Calendar",
+        insight: summary.calendarInsight,
+        count: summary.deadlines,
+        icon: CalendarDaysIcon,
+        href: "/calendar",
+        color: "from-green-500 to-green-600",
+      },
+      {
+        title: "Budget",
+        insight: summary.budgetInsight,
+        count: summary.budgetAlerts,
+        icon: BanknotesIcon,
+        href: "/budget",
+        color: "from-amber-500 to-amber-600",
+      },
+    ],
+    [summary],
+  );
+
+  const realFeedItems: FeedItem[] = agentFeedItems.map((it) => ({
+    id: it.id,
+    text: it.text,
+    category: it.category,
+    actionLabel: it.actionLabel,
+    actionUrl: it.actionUrl,
+    timestamp: it.timestamp,
   }));
-  const combinedFeed = [...realFeedItems, ...mockFeedItems].slice(0, 10);
+
+  const combinedFeed = [...realFeedItems, ...(apiFeed ?? []), ...mockFeedItems].slice(0, 12);
 
   return (
     <AppShell>
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header */}
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-text-primary">
             {greeting}, {displayName}
@@ -134,7 +155,6 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Hero Summary Cards */}
         <motion.div
           variants={container}
           initial="hidden"
@@ -158,14 +178,11 @@ export default function DashboardPage() {
           ))}
         </motion.div>
 
-        {/* Upload Box */}
         <motion.div variants={item} initial="hidden" animate="show">
           <UploadBox />
         </motion.div>
 
-        {/* Smart Cards + Today Feed */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Smart Cards */}
           <div className="lg:col-span-2">
             <h2 className="text-lg font-semibold text-text-primary mb-4">Quick Access</h2>
             <motion.div
@@ -179,7 +196,9 @@ export default function DashboardPage() {
                   <Link href={card.href}>
                     <Card hover padding="md" className="group">
                       <div className="flex items-start justify-between mb-3">
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center`}>
+                        <div
+                          className={`w-10 h-10 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center`}
+                        >
                           <card.icon className="w-5 h-5 text-white" />
                         </div>
                         <span className="text-xs font-medium text-text-secondary bg-gray-100 px-2 py-1 rounded-full">
@@ -198,7 +217,6 @@ export default function DashboardPage() {
             </motion.div>
           </div>
 
-          {/* Today Feed */}
           <div>
             <h2 className="text-lg font-semibold text-text-primary mb-4">Today&apos;s Actions</h2>
             <Card padding="sm">

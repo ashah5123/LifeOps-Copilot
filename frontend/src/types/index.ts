@@ -8,6 +8,8 @@ export interface DashboardSummary {
   careerInsight: string;
   calendarInsight: string;
   budgetInsight: string;
+  /** Applications stored in backend (optional; from live dashboard API) */
+  careerTracked?: number;
 }
 
 // Feed
@@ -40,6 +42,8 @@ export interface GmailMessage {
   timestamp: string;
   isUnread: boolean;
   labels: string[];
+  /** Gmail Message-Id header for threading replies */
+  rfc822MessageId?: string;
 }
 
 export interface AISummary {

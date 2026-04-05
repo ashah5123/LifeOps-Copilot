@@ -66,18 +66,25 @@ class GmailService:
                 detail = httpx.get(
                     f"{GMAIL_API}/messages/{msg_id}",
                     headers=self._headers(),
-                    params={"format": "metadata", "metadataHeaders": ["From", "Subject"]},
+                    params={
+                        "format": "metadata",
+                        "metadataHeaders": ["From", "Subject", "Message-Id"],
+                    },
                     timeout=15,
                 )
                 detail.raise_for_status()
                 data = detail.json()
                 headers_list = data.get("payload", {}).get("headers", [])
                 header_map = {h["name"]: h["value"] for h in headers_list}
+                label_ids = data.get("labelIds") or []
                 results.append({
                     "id": msg_id,
+                    "threadId": data.get("threadId", msg_id),
                     "sender": header_map.get("From", "unknown"),
                     "subject": header_map.get("Subject", "(no subject)"),
                     "snippet": data.get("snippet", ""),
+                    "isUnread": "UNREAD" in label_ids,
+                    "rfc822MessageId": header_map.get("Message-Id", ""),
                 })
             return results
         except Exception as exc:
@@ -88,7 +95,14 @@ class GmailService:
     # Send message (human-approved only)
     # ------------------------------------------------------------------
 
-    def send_message(self, to_email: str, subject: str, body: str) -> dict[str, str]:
+    def send_message(
+        self,
+        to_email: str,
+        subject: str,
+        body: str,
+        thread_id: str | None = None,
+        in_reply_to_message_id: str | None = None,
+    ) -> dict[str, str]:
         """Send an email via Gmail API.
 
         This method should ONLY be called after the user has explicitly
@@ -97,18 +111,28 @@ class GmailService:
         Falls back to a simulated send when Gmail is not connected.
         """
         if not self._is_connected():
-            return self._mock_send(to_email, subject, body)
+            return self._mock_send(to_email, subject, body, thread_id=thread_id)
 
         try:
             mime = MIMEText(body)
             mime["to"] = to_email
             mime["subject"] = subject
+            if in_reply_to_message_id:
+                mid = in_reply_to_message_id.strip()
+                if not mid.startswith("<"):
+                    mid = f"<{mid}>"
+                mime["In-Reply-To"] = mid
+                mime["References"] = mid
             raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
+
+            send_body: dict[str, str] = {"raw": raw}
+            if thread_id:
+                send_body["threadId"] = thread_id
 
             resp = httpx.post(
                 f"{GMAIL_API}/messages/send",
                 headers=self._headers(),
-                json={"raw": raw},
+                json=send_body,
                 timeout=15,
             )
             resp.raise_for_status()
@@ -136,30 +160,46 @@ class GmailService:
         return [
             {
                 "id": "mock-msg-1",
+                "threadId": "mock-thread-1",
                 "sender": "professor@asu.edu",
                 "subject": "Assignment follow-up",
                 "snippet": "Please send the revised version by tomorrow.",
+                "isUnread": True,
+                "rfc822MessageId": "",
             },
             {
                 "id": "mock-msg-2",
+                "threadId": "mock-thread-2",
                 "sender": "career-services@asu.edu",
                 "subject": "Resume workshop this Friday",
                 "snippet": "Join us for a hands-on resume review session.",
+                "isUnread": True,
+                "rfc822MessageId": "",
             },
             {
                 "id": "mock-msg-3",
+                "threadId": "mock-thread-3",
                 "sender": "club-president@asu.edu",
                 "subject": "Hackathon team signup",
                 "snippet": "Sign up before Wednesday to secure your spot.",
+                "isUnread": False,
+                "rfc822MessageId": "",
             },
         ]
 
     @staticmethod
-    def _mock_send(to_email: str, subject: str, body: str) -> dict[str, str]:
+    def _mock_send(
+        to_email: str,
+        subject: str,
+        body: str,
+        *,
+        thread_id: str | None = None,
+    ) -> dict[str, str]:
         return {
             "status": "sent (mock)",
             "messageId": "mock-sent-001",
             "to": to_email,
             "subject": subject,
             "preview": body[:120],
+            "threadId": thread_id or "",
         }

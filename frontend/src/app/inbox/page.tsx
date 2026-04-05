@@ -15,9 +15,21 @@ import Modal from "@/components/ui/Modal";
 import Badge from "@/components/ui/Badge";
 import ConnectGmailButton from "@/components/inbox/ConnectGmailButton";
 import { useAppStore } from "@/lib/store";
-import { getGmailMessages, sendGmailReply, processInboxMessage } from "@/lib/api";
+import { getGmailMessages, sendGmailReply, processInboxMessage, draftInboxReply } from "@/lib/api";
+import { decodeHtmlEntities } from "@/lib/html";
 import { mockGmailMessages } from "@/lib/mock-data";
 import type { GmailMessage } from "@/types";
+
+function splitSender(from: string): { display: string; email: string } {
+  const bracket = from.match(/<([^>]+@[^>]+)>/);
+  if (bracket) {
+    const email = bracket[1].trim();
+    const name = from.replace(bracket[0], "").replace(/"/g, "").trim();
+    return { display: name || email.split("@")[0] || email, email };
+  }
+  if (from.includes("@")) return { display: from.split("@")[0], email: from.trim() };
+  return { display: from || "Unknown", email: "unknown@local" };
+}
 
 function formatTime(timestamp: string) {
   const d = new Date(timestamp);
@@ -49,11 +61,10 @@ function EmailListItem({
         ${isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-gray-50"}
       `}
     >
-      <div className="flex-shrink-0 mt-0.5">
-        {message.isUnread && (
-          <span className="block w-2 h-2 rounded-full bg-primary" />
-        )}
-        {!message.isUnread && <span className="block w-2 h-2" />}
+      <div className="flex-shrink-0 mt-0.5 w-2 flex justify-center" aria-hidden>
+        {message.isUnread ? (
+          <span className="block w-2 h-2 rounded-full bg-primary" title="Unread" />
+        ) : null}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -63,9 +74,11 @@ function EmailListItem({
           <span className="text-xs text-text-secondary whitespace-nowrap">{formatTime(message.timestamp)}</span>
         </div>
         <p className={`text-sm truncate ${message.isUnread ? "font-medium text-text-primary" : "text-text-secondary"}`}>
-          {message.subject}
+          {decodeHtmlEntities(message.subject)}
         </p>
-        <p className="text-xs text-text-secondary truncate mt-0.5">{message.preview}</p>
+        <p className="text-xs text-text-secondary truncate mt-0.5">
+          {decodeHtmlEntities(message.preview)}
+        </p>
       </div>
     </motion.div>
   );
@@ -78,35 +91,66 @@ function EmailDetailPanel({
   message: GmailMessage;
   onBack: () => void;
 }) {
-  const [draft, setDraft] = useState(
-    `Dear ${message.sender.split(" ")[0]},\n\nThank you for your email. I've reviewed the details and would like to follow up on the points you've raised.\n\nBest regards`
-  );
+  const [draft, setDraft] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [sending, setSending] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const addToast = useAppStore((s) => s.addToast);
 
-  // Get AI summary when message is selected
+  const contentForAi = decodeHtmlEntities(
+    message.body || message.preview || message.subject || "",
+  );
+
   useEffect(() => {
-    const body = message.body || message.preview || message.subject;
-    processInboxMessage(body)
-      .then((result) => {
+    let cancelled = false;
+    setAiSummary(null);
+    setDraft("");
+    const fallbackDraft = `Hi ${message.sender.split(" ")[0] || "there"},\n\nThanks for your message. I'll get back to you shortly.\n\nBest regards`;
+
+    (async () => {
+      try {
+        const result = await processInboxMessage(contentForAi);
+        if (cancelled) return;
         const extracted = result.extracted as Record<string, unknown> | undefined;
         const fields = extracted?.fields as Record<string, unknown> | undefined;
-        setAiSummary((fields?.summary as string) || `${message.sender} is requesting feedback. Review and respond by the deadline.`);
-      })
-      .catch(() => {
-        setAiSummary(`${message.sender} is requesting feedback. Review and respond by the deadline.`);
-      });
-  }, [message]);
+        const summaryText =
+          (fields?.summary as string) ||
+          `${message.sender} sent a message. Review and respond as needed.`;
+        setAiSummary(decodeHtmlEntities(summaryText));
+        const action = result.result as Record<string, unknown> | undefined;
+        let nextDraft = (action?.draftReply as string | undefined)?.trim() || "";
+        if (!nextDraft && contentForAi.trim()) {
+          try {
+            const dr = await draftInboxReply({ content: contentForAi });
+            nextDraft = ((dr as { draft?: string }).draft || "").trim();
+          } catch {
+            /* use fallback */
+          }
+        }
+        if (!cancelled) setDraft(nextDraft || fallbackDraft);
+      } catch {
+        if (!cancelled) {
+          setAiSummary(`${message.sender} sent a message. Review and respond as needed.`);
+          setDraft(fallbackDraft);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [message.id, contentForAi, message.sender]);
 
   const handleConfirmSend = async () => {
     setSending(true);
     try {
       await sendGmailReply({
         toEmail: message.senderEmail,
-        subject: `Re: ${message.subject}`,
+        subject: `Re: ${decodeHtmlEntities(message.subject)}`,
         body: draft,
+        threadId: message.threadId || undefined,
+        inReplyToMessageId: message.rfc822MessageId || undefined,
       });
       addToast({ message: "Email sent successfully!", type: "success" });
     } catch {
@@ -116,11 +160,21 @@ function EmailDetailPanel({
     setShowConfirmModal(false);
   };
 
-  const handleRegenerate = () => {
-    setDraft(
-      `Hi ${message.sender.split(" ")[0]},\n\nI appreciate you reaching out about this. After careful consideration, here are my thoughts:\n\n[AI regenerated draft]\n\nLooking forward to discussing further.\n\nBest regards`
-    );
-    addToast({ message: "Draft regenerated", type: "info" });
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      const res = await draftInboxReply({
+        content: `${contentForAi}\n\n(Regenerate a concise, professional reply.)`,
+      });
+      const d = (res as { draft?: string }).draft;
+      if (d?.trim()) {
+        setDraft(d.trim());
+        addToast({ message: "Draft regenerated from AI pipeline", type: "info" });
+      }
+    } catch {
+      addToast({ message: "Could not regenerate draft", type: "error" });
+    }
+    setRegenerating(false);
   };
 
   return (
@@ -135,7 +189,9 @@ function EmailDetailPanel({
 
         {/* Email Header */}
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-text-primary">{message.subject}</h2>
+          <h2 className="text-lg font-semibold text-text-primary">
+            {decodeHtmlEntities(message.subject)}
+          </h2>
           <div className="flex items-center gap-2 mt-1">
             <p className="text-sm text-text-secondary">
               From: <span className="font-medium text-text-primary">{message.sender}</span>
@@ -149,7 +205,7 @@ function EmailDetailPanel({
         <Card padding="md" className="mb-4 flex-shrink-0">
           <p className="text-xs font-medium text-text-secondary mb-2 uppercase tracking-wider">Original Email</p>
           <div className="text-sm text-text-primary whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
-            {message.body}
+            {decodeHtmlEntities(message.body)}
           </div>
         </Card>
 
@@ -160,7 +216,7 @@ function EmailDetailPanel({
             <p className="text-xs font-medium text-primary uppercase tracking-wider">AI Summary</p>
           </div>
           <p className="text-sm text-text-primary leading-relaxed">
-            {aiSummary || "Analyzing email..."}
+            {aiSummary ? decodeHtmlEntities(aiSummary) : "Analyzing email..."}
           </p>
           <div className="flex flex-wrap gap-1.5 mt-2">
             <Badge variant="info">Requires Response</Badge>
@@ -175,7 +231,13 @@ function EmailDetailPanel({
               <SparklesIcon className="w-4 h-4 text-primary" />
               <p className="text-xs font-medium text-primary uppercase tracking-wider">AI Draft Reply</p>
             </div>
-            <Button variant="ghost" size="sm" onClick={handleRegenerate} icon={<ArrowPathIcon className="w-3.5 h-3.5" />}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleRegenerate()}
+              loading={regenerating}
+              icon={<ArrowPathIcon className="w-3.5 h-3.5" />}
+            >
               Regenerate
             </Button>
           </div>
@@ -211,7 +273,9 @@ function EmailDetailPanel({
           </div>
           <div>
             <p className="text-xs text-text-secondary mb-1">Subject:</p>
-            <p className="text-sm font-medium text-text-primary">Re: {message.subject}</p>
+            <p className="text-sm font-medium text-text-primary">
+              Re: {decodeHtmlEntities(message.subject)}
+            </p>
           </div>
           <div className="bg-background rounded-xl p-4 border border-border/50">
             <p className="text-xs text-text-secondary mb-2">Preview:</p>
@@ -253,18 +317,26 @@ export default function InboxPage() {
         .then((backendMessages) => {
           // Backend returns { id, sender, subject, snippet } — map to frontend GmailMessage shape
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const mapped: GmailMessage[] = backendMessages.map((m: any) => ({
-            id: m.id || `msg-${Math.random()}`,
-            threadId: m.id || "",
-            sender: m.sender || "Unknown",
-            senderEmail: m.sender?.includes("@") ? m.sender : `${(m.sender || "unknown").toLowerCase().replace(/\s/g, ".")}@email.com`,
-            subject: m.subject || "(no subject)",
-            preview: m.snippet || m.preview || "",
-            body: m.snippet || m.preview || m.body || "",
-            timestamp: new Date().toISOString(),
-            isUnread: true,
-            labels: [],
-          }));
+          const mapped: GmailMessage[] = (backendMessages as unknown[]).map((raw) => {
+            const m = raw as Record<string, unknown>;
+            const from = String(m.sender || "Unknown");
+            const { display, email } = splitSender(from);
+            const unread =
+              typeof m.isUnread === "boolean" ? m.isUnread : m.isUnread !== "false";
+            return {
+              id: String(m.id || `msg-${Math.random()}`),
+              threadId: String(m.threadId || m.id || ""),
+              sender: display,
+              senderEmail: email,
+              subject: String(m.subject || "(no subject)"),
+              preview: String(m.snippet || m.preview || ""),
+              body: String(m.body || m.snippet || m.preview || ""),
+              timestamp: String(m.internalDate || m.timestamp || new Date().toISOString()),
+              isUnread: Boolean(unread),
+              labels: Array.isArray(m.labels) ? (m.labels as string[]) : [],
+              rfc822MessageId: m.rfc822MessageId ? String(m.rfc822MessageId) : undefined,
+            };
+          });
           if (mapped.length > 0) setMessages(mapped);
         })
         .catch(() => {
@@ -309,7 +381,12 @@ export default function InboxPage() {
                         key={msg.id}
                         message={msg}
                         isSelected={selectedMessage?.id === msg.id}
-                        onClick={() => setSelectedMessage(msg)}
+                        onClick={() => {
+                          setSelectedMessage({ ...msg, isUnread: false });
+                          setMessages((prev) =>
+                            prev.map((m) => (m.id === msg.id ? { ...m, isUnread: false } : m)),
+                          );
+                        }}
                       />
                     ))}
                   </div>

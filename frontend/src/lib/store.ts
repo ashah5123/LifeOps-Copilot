@@ -161,13 +161,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
-  theme: persisted.theme ?? "light",
+  theme: persisted.theme ?? "dark",
   toggleTheme: () =>
     set((s) => {
       const newTheme = s.theme === "light" ? "dark" : "light";
       if (typeof document !== "undefined") {
-        document.documentElement.classList.toggle("dark", newTheme === "dark");
+        document.documentElement.className = `${newTheme} h-full`;
         document.documentElement.style.colorScheme = newTheme;
+        try {
+          localStorage.setItem("sparkup-theme", newTheme);
+        } catch {
+          /* ignore */
+        }
       }
       saveState({ ...extractPersisted(get()), theme: newTheme });
       return { theme: newTheme };
@@ -175,8 +180,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   initTheme: () => {
     const t = get().theme;
     if (typeof document !== "undefined") {
-      document.documentElement.classList.toggle("dark", t === "dark");
+      document.documentElement.className = `${t} h-full`;
       document.documentElement.style.colorScheme = t;
+      try {
+        localStorage.setItem("sparkup-theme", t);
+      } catch {
+        /* ignore */
+      }
     }
   },
 

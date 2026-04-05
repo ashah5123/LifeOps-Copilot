@@ -79,6 +79,8 @@ export const sendGmailReply = (payload: {
   toEmail: string;
   subject: string;
   body: string;
+  threadId?: string;
+  inReplyToMessageId?: string;
 }) =>
   request<{ status: string; messageId: string; to: string }>("/api/inbox/gmail/send", {
     method: "POST",

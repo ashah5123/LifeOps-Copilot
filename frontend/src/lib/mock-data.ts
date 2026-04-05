@@ -16,6 +16,7 @@ export const mockDashboardSummary: DashboardSummary = {
   deadlines: 2,
   tasksToday: 6,
   budgetAlerts: 1,
+  careerTracked: 3,
   inboxInsight: "3 emails from professors need replies today",
   careerInsight: "Google internship deadline in 2 days",
   calendarInsight: "Study group at 4 PM, free slot at 6 PM",

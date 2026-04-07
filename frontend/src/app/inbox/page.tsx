@@ -72,7 +72,7 @@ function EmailListItem({
       onClick={onClick}
       className={`
         flex items-start gap-3 p-4 cursor-pointer transition-colors border-b border-border/50
-        ${isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-gray-50"}
+        ${isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-surface-hover dark:hover:bg-white/[0.06]"}
       `}
     >
       <div className="flex-shrink-0 mt-0.5 w-2 flex justify-center" aria-hidden>
@@ -356,7 +356,7 @@ export default function InboxPage() {
   const openGoogleOauth = async () => {
     setReconnecting(true);
     try {
-      const { authUrl } = await getGoogleLoginUrl();
+      const { authUrl } = await getGoogleLoginUrl("/inbox");
       if (!authUrl?.startsWith("http")) throw new Error("Invalid auth URL");
       window.location.assign(authUrl);
     } catch {

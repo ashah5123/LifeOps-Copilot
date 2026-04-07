@@ -57,16 +57,18 @@ _reset_tokens: dict[str, str] = {}  # token -> email
 
 
 @router.get("/google/login")
-def google_login() -> dict[str, str]:
-    """Return the Google OAuth consent URL."""
-    return {"authUrl": oauth_service.get_authorization_url()}
+def google_login(redirect: str = "") -> dict[str, str]:
+    """Return the Google OAuth consent URL with optional redirect destination."""
+    return {"authUrl": oauth_service.get_authorization_url(state=redirect or "")}
 
 
 @router.get("/google/callback")
-def google_callback(code: str):
+def google_callback(code: str, state: str = ""):
     """Exchange code for tokens, create/find user, issue JWT, redirect to frontend."""
     tokens = oauth_service.exchange_code_for_tokens(code)
     base = settings.frontend_url.rstrip("/")
+    # state carries the post-login redirect path (e.g. "/inbox")
+    redirect_after = state if state.startswith("/") else ""
 
     access_token = tokens.get("access_token", "")
     if not access_token:
@@ -107,11 +109,17 @@ def google_callback(code: str):
         firestore_service.create(USERS_COLLECTION, record)
         user_name = record["name"]
 
+    # Store Gmail OAuth tokens for THIS user (per-user isolation)
+    oauth_service.store_tokens_for_user(user_id, tokens)
+
     # Issue JWT
     jwt_token = create_access_token(user_id=user_id, email=email_l, name=user_name)
 
     # Redirect to frontend login page with token (login page handles auto-login)
-    params = urlencode({"google_token": jwt_token, "name": user_name, "email": email_l})
+    redirect_params: dict[str, str] = {"google_token": jwt_token, "name": user_name, "email": email_l}
+    if redirect_after:
+        redirect_params["redirect"] = redirect_after
+    params = urlencode(redirect_params)
     return RedirectResponse(url=f"{base}/login?{params}")
 
 

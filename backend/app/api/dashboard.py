@@ -4,7 +4,21 @@ from datetime import date
 
 from fastapi import APIRouter
 
-from app.core.dependencies import firestore_service
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from app.core.dependencies import auth_service, firestore_service, gmail_service
+
+security = HTTPBearer(auto_error=False)
+
+
+def _get_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> str:
+    if not credentials:
+        return ""
+    parsed = auth_service.validate_token(credentials.credentials)
+    return parsed.get("userId", "") if parsed else ""
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -14,7 +28,7 @@ def _today_str() -> str:
 
 
 @router.get("/summary")
-def get_dashboard_summary() -> dict[str, object]:
+def get_dashboard_summary(user_id: str = Depends(_get_user_id)) -> dict[str, object]:
     fs = firestore_service
     drafts = fs.list_collection("drafts")
     apps = fs.list_collection("applications")
@@ -46,21 +60,33 @@ def get_dashboard_summary() -> dict[str, object]:
     feed_today = len([f for f in fs.list_collection("feed_items") if str(f.get("date", "")) == today])
     active_apps = len([a for a in apps if str(a.get("status", "")).lower() not in ("rejected", "offer")])
 
-    emails_needing = pending_drafts + pending_approvals
+    pipeline_inbox = pending_drafts + pending_approvals
+    gmail_unread = 0  # Per-user Gmail count requires auth; shown in Inbox page instead
+    # Match what users see in Gmail: unread in INBOX, plus any agent drafts/approvals
+    emails_needing = max(pipeline_inbox, gmail_unread)
+
+    inbox_parts: list[str] = []
+    if gmail_unread:
+        inbox_parts.append(f"{gmail_unread} unread in Gmail")
+    if pending_drafts:
+        inbox_parts.append(f"{pending_drafts} draft(s) pending")
+    if pending_approvals:
+        inbox_parts.append(f"{pending_approvals} approval(s) pending")
+    if inbox_parts:
+        inbox_insight = " · ".join(inbox_parts) + "."
+    else:
+        inbox_insight = "Inbox is clear — no unread Gmail or pending pipeline actions."
 
     return {
         "careerTracked": len(apps),
         "emailsNeedingReply": emails_needing,
+        "gmailUnread": gmail_unread,
         "deadlines": deadline_like
         if deadline_like
         else len([e for e in events if str(e.get("date", "")) >= today]),
         "tasksToday": feed_today + min(active_apps, 5),
         "budgetAlerts": budget_alerts,
-        "inboxInsight": (
-            f"{pending_drafts} draft(s) and {pending_approvals} approval(s) need attention."
-            if (pending_drafts or pending_approvals)
-            else "No pending inbox actions in the pipeline."
-        ),
+        "inboxInsight": inbox_insight,
         "careerInsight": (
             f"{len(apps)} application(s) on file."
             if apps

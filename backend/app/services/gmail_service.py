@@ -2,6 +2,9 @@
 
 Requires a real OAuth access token (no mock inbox). When disconnected,
 callers get an empty list or HTTP errors from the API routes.
+
+All operations are **per-user**: the caller must provide a user_id so
+the correct OAuth token is used.
 """
 
 from __future__ import annotations
@@ -86,7 +89,7 @@ def _body_from_payload(payload: dict, fallback_snippet: str) -> str:
 
 
 class GmailService:
-    """Read and send Gmail messages using stored OAuth tokens."""
+    """Read and send Gmail messages using per-user OAuth tokens."""
 
     def __init__(self, oauth_service: GoogleOAuthService | None = None) -> None:
         self._oauth = oauth_service or GoogleOAuthService()
@@ -95,36 +98,32 @@ class GmailService:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _is_connected(self) -> bool:
-        token = self._oauth.get_stored_access_token()
-        return token is not None and not token.startswith("demo-")
+    def _headers_for_user(self, user_id: str) -> dict[str, str]:
+        token = self._oauth.get_user_access_token(user_id) or ""
+        return {"Authorization": f"Bearer {token}"}
 
-    def connection_status(self) -> dict[str, bool]:
-        """Whether the server can call Gmail on behalf of a linked account."""
-        token = self._oauth.get_stored_access_token() or ""
-        demo = not token or str(token).startswith("demo-")
+    def connection_status(self, user_id: str) -> dict[str, bool]:
+        """Whether the server can call Gmail on behalf of a specific user."""
+        connected = self._oauth.is_user_connected(user_id) if user_id else False
         return {
-            "connected": not demo,
+            "connected": connected,
             "oauthConfigured": settings.is_oauth_configured,
         }
-
-    def _headers(self) -> dict[str, str]:
-        token = self._oauth.get_stored_access_token() or ""
-        return {"Authorization": f"Bearer {token}"}
 
     # ------------------------------------------------------------------
     # List messages
     # ------------------------------------------------------------------
 
-    def list_messages(self, max_results: int = 10) -> list[dict[str, Any]]:
-        """Return recent Gmail message summaries (empty list if not connected)."""
-        if not self._is_connected():
+    def list_messages(self, user_id: str, max_results: int = 12) -> list[dict[str, Any]]:
+        """Return recent Gmail message summaries for a user."""
+        if not self._oauth.is_user_connected(user_id):
             return []
 
+        headers = self._headers_for_user(user_id)
         try:
             resp = httpx.get(
                 f"{GMAIL_API}/messages",
-                headers=self._headers(),
+                headers=headers,
                 params={"maxResults": max_results},
                 timeout=15,
             )
@@ -135,7 +134,7 @@ class GmailService:
             for msg_id in message_ids[:max_results]:
                 detail = httpx.get(
                     f"{GMAIL_API}/messages/{msg_id}",
-                    headers=self._headers(),
+                    headers=headers,
                     params={
                         "format": "metadata",
                         "metadataHeaders": ["From", "Subject", "Message-Id"],
@@ -160,18 +159,19 @@ class GmailService:
                 })
             return results
         except Exception as exc:
-            logger.error("Gmail list_messages failed: %s", exc)
+            logger.error("Gmail list_messages failed for user %s: %s", user_id, exc)
             raise GmailAPIError(f"Could not load messages from Gmail: {exc}") from exc
 
-    def get_message(self, message_id: str) -> dict[str, object]:
-        """Fetch one message with ``format=full`` and decoded plain/HTML body."""
-        if not self._is_connected():
+    def get_message(self, user_id: str, message_id: str) -> dict[str, object]:
+        """Fetch one message with decoded plain/HTML body."""
+        if not self._oauth.is_user_connected(user_id):
             raise GmailNotConnectedError("Gmail is not connected. Complete Google sign-in from Inbox.")
 
+        headers = self._headers_for_user(user_id)
         try:
             resp = httpx.get(
                 f"{GMAIL_API}/messages/{message_id}",
-                headers=self._headers(),
+                headers=headers,
                 params={"format": "full"},
                 timeout=25,
             )
@@ -193,8 +193,10 @@ class GmailService:
                 "isUnread": "UNREAD" in label_ids,
                 "rfc822MessageId": header_map.get("Message-Id", ""),
             }
+        except GmailNotConnectedError:
+            raise
         except Exception as exc:
-            logger.error("Gmail get_message failed: %s", exc)
+            logger.error("Gmail get_message failed for user %s: %s", user_id, exc)
             raise GmailAPIError(f"Could not load message: {exc}") from exc
 
     # ------------------------------------------------------------------
@@ -203,6 +205,7 @@ class GmailService:
 
     def send_message(
         self,
+        user_id: str,
         to_email: str,
         subject: str,
         body: str,
@@ -210,9 +213,10 @@ class GmailService:
         in_reply_to_message_id: str | None = None,
     ) -> dict[str, str]:
         """Send an email via Gmail API after explicit user approval."""
-        if not self._is_connected():
+        if not self._oauth.is_user_connected(user_id):
             raise GmailNotConnectedError("Gmail is not connected. Connect Gmail before sending.")
 
+        headers = self._headers_for_user(user_id)
         try:
             mime = MIMEText(body)
             mime["to"] = to_email
@@ -231,7 +235,7 @@ class GmailService:
 
             resp = httpx.post(
                 f"{GMAIL_API}/messages/send",
-                headers=self._headers(),
+                headers=headers,
                 json=send_body,
                 timeout=15,
             )
@@ -243,6 +247,8 @@ class GmailService:
                 "to": to_email,
                 "subject": subject,
             }
+        except GmailNotConnectedError:
+            raise
         except Exception as exc:
-            logger.error("Gmail send_message failed: %s", exc)
+            logger.error("Gmail send_message failed for user %s: %s", user_id, exc)
             raise GmailAPIError(f"Send failed: {exc}") from exc

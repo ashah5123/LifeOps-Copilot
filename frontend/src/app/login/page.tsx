@@ -82,8 +82,9 @@ export default function LoginPage() {
         googleToken,
       );
       addToast({ message: `Welcome, ${displayName}!`, type: "success" });
+      const redirectTo = params.get("redirect") || "/dashboard";
       window.history.replaceState({}, "", "/login");
-      router.replace("/dashboard");
+      router.replace(redirectTo);
       return;
     }
 
@@ -143,7 +144,7 @@ export default function LoginPage() {
   const handleGoogle = async () => {
     setError("");
     try {
-      const { authUrl } = await getGoogleLoginUrl();
+      const { authUrl } = await getGoogleLoginUrl("/dashboard");
       if (!authUrl?.startsWith("http")) {
         throw new Error("Invalid auth URL from server");
       }
@@ -317,7 +318,7 @@ export default function LoginPage() {
               whileTap={{ scale: 0.98 }}
               type="button"
               onClick={() => void handleGoogle()}
-              className="w-full flex items-center justify-center gap-2 py-2.5 bg-surface border border-border rounded-xl text-sm font-medium text-text-primary hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-surface border border-border rounded-xl text-sm font-medium text-text-primary hover:bg-surface-hover dark:hover:bg-white/[0.08] transition-colors cursor-pointer"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -327,6 +328,10 @@ export default function LoginPage() {
               </svg>
               Sign in with Google
             </motion.button>
+            <p className="mt-2 text-center text-[11px] text-text-secondary leading-relaxed">
+              If Google shows <span className="font-medium text-text-primary">403: access_denied</span>, add your email under
+              OAuth consent screen → Test users in Google Cloud Console (Testing mode).
+            </p>
           </div>
         </motion.div>
       </div>

@@ -13,7 +13,7 @@ export default function ConnectGmailButton() {
   const handleConnect = async () => {
     setLoading(true);
     try {
-      const data = await getGoogleLoginUrl();
+      const data = await getGoogleLoginUrl("/inbox");
       // Redirect user to Google OAuth consent screen
       window.location.href = data.authUrl;
     } catch {
@@ -38,9 +38,16 @@ export default function ConnectGmailButton() {
       <p className="text-sm text-text-secondary text-center max-w-md mb-2">
         Link your Gmail account to let LifeOps read your emails, generate AI summaries, and help you draft replies.
       </p>
-      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-full text-xs font-medium mb-8">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-        Testing Mode — Demo Accounts Only
+      <div className="inline-flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2 bg-amber-500/15 text-amber-900 dark:text-amber-100 border border-amber-500/35 rounded-xl text-xs font-medium mb-8 max-w-lg text-center sm:text-left">
+        <span className="inline-flex items-center justify-center gap-1.5 shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          Google OAuth in Testing?
+        </span>
+        <span className="text-[11px] font-normal opacity-90">
+          If you see <strong className="font-semibold">403: access_denied</strong>, add your Gmail under{" "}
+          <em>OAuth consent screen → Test users</em> in Google Cloud Console. For production, use your Cloud Run
+          API URL in <em>Authorized redirect URIs</em>.
+        </span>
       </div>
 
       <Button size="lg" onClick={handleConnect} loading={loading}>

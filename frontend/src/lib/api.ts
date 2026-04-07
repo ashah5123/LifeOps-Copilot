@@ -89,8 +89,8 @@ export const getTodayFeed = () =>
 export const uploadFile = (file: File) => uploadForm("/api/uploads", file);
 
 // --- Auth / Gmail ---
-export const getGoogleLoginUrl = () =>
-  request<{ authUrl: string }>("/api/auth/google/login");
+export const getGoogleLoginUrl = (redirect?: string) =>
+  request<{ authUrl: string }>(`/api/auth/google/login${redirect ? `?redirect=${encodeURIComponent(redirect)}` : ""}`);
 
 export interface AuthUser {
   id: string;
@@ -133,8 +133,10 @@ export const authResetPassword = (body: { email: string; token: string; new_pass
 export const getGmailConnectionStatus = () =>
   request<{ connected: boolean; oauthConfigured: boolean }>("/api/inbox/gmail/status");
 
-export const getGmailMessages = () =>
-  request<import("@/types").GmailMessage[]>("/api/inbox/gmail/messages");
+export const getGmailMessages = (maxResults = 12) =>
+  request<import("@/types").GmailMessage[]>(
+    `/api/inbox/gmail/messages?max_results=${encodeURIComponent(String(Math.min(30, Math.max(1, maxResults))))}`,
+  );
 
 export const getGmailMessageDetail = (messageId: string) =>
   request<Record<string, unknown>>(`/api/inbox/gmail/messages/${encodeURIComponent(messageId)}`);

@@ -1,14 +1,32 @@
-"""Inbox routes — process emails, list Gmail messages, send with approval."""
+"""Inbox routes — process emails, list Gmail messages, send with approval.
+
+All Gmail endpoints are **per-user**: the JWT token identifies which
+user's Gmail to access.
+"""
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
-from app.core.dependencies import agent_runner, gmail_service
+from app.core.dependencies import agent_runner, auth_service, gmail_service
 from app.services.gmail_service import GmailAPIError, GmailNotConnectedError
 
 router = APIRouter(prefix="/inbox", tags=["inbox"])
+security = HTTPBearer(auto_error=False)
+
+
+def _get_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> str:
+    """Extract the user ID from the JWT token, or return empty string."""
+    if not credentials:
+        return ""
+    parsed = auth_service.validate_token(credentials.credentials)
+    if not parsed:
+        return ""
+    return parsed.get("userId", "")
 
 
 # ------------------------------------------------------------------
@@ -33,20 +51,17 @@ class GmailSendPayload(BaseModel):
 
 @router.post("/process")
 def process_inbox(payload: InboxPayload) -> dict[str, object]:
-    """Run raw text/email content through the full agent pipeline.
-
-    Works in both Gmail-connected and manual-paste mode.
-    """
+    """Run raw text/email content through the full agent pipeline."""
     return agent_runner.process(payload.content)
 
 
 # ------------------------------------------------------------------
-# POST /api/inbox/draft-reply  (existing helper endpoint)
+# POST /api/inbox/draft-reply
 # ------------------------------------------------------------------
 
 @router.post("/draft-reply")
 def draft_reply(payload: InboxPayload) -> dict[str, str]:
-    """Generate a draft via the inbox branch of the 6-agent pipeline (ActionAgent draftReply)."""
+    """Generate a draft via the inbox branch of the 6-agent pipeline."""
     try:
         result = agent_runner.process_for_domain(payload.content, "inbox")
         action = result.get("result", {}) or {}
@@ -68,7 +83,7 @@ def draft_reply(payload: InboxPayload) -> dict[str, str]:
 
 
 # ------------------------------------------------------------------
-# GET /api/inbox/actions  (existing helper endpoint)
+# GET /api/inbox/actions
 # ------------------------------------------------------------------
 
 @router.get("/actions")
@@ -83,34 +98,45 @@ def get_inbox_actions() -> list[dict[str, str]]:
 
 
 # ------------------------------------------------------------------
-# GET /api/inbox/gmail/status
+# GET /api/inbox/gmail/status  (per-user)
 # ------------------------------------------------------------------
-
 
 @router.get("/gmail/status")
-def gmail_connection_status() -> dict[str, bool]:
-    """True when a non-demo OAuth token is stored (server can call Gmail API)."""
-    return gmail_service.connection_status()
+def gmail_connection_status(
+    user_id: str = Depends(_get_user_id),
+) -> dict[str, bool]:
+    """True when the current user has a non-demo OAuth token stored."""
+    return gmail_service.connection_status(user_id)
 
 
 # ------------------------------------------------------------------
-# GET /api/inbox/gmail/messages
+# GET /api/inbox/gmail/messages  (per-user)
 # ------------------------------------------------------------------
 
 @router.get("/gmail/messages")
-def list_gmail_messages() -> list[dict[str, Any]]:
-    """Return recent Gmail summaries, or [] when not connected (never mock data)."""
+def list_gmail_messages(
+    max_results: int = Query(12, ge=1, le=30),
+    user_id: str = Depends(_get_user_id),
+) -> list[dict[str, Any]]:
+    """Return recent Gmail summaries for the authenticated user."""
+    if not user_id:
+        return []
     try:
-        return gmail_service.list_messages()
+        return gmail_service.list_messages(user_id, max_results=max_results)
     except GmailAPIError as exc:
         raise HTTPException(status_code=502, detail=exc.message) from exc
 
 
 @router.get("/gmail/messages/{message_id}")
-def get_gmail_message(message_id: str) -> dict[str, object]:
-    """Return one message with full MIME body (plain text or HTML stripped)."""
+def get_gmail_message(
+    message_id: str,
+    user_id: str = Depends(_get_user_id),
+) -> dict[str, object]:
+    """Return one message with full MIME body for the authenticated user."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     try:
-        out = gmail_service.get_message(message_id)
+        out = gmail_service.get_message(user_id, message_id)
     except GmailNotConnectedError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except GmailAPIError as exc:
@@ -121,18 +147,20 @@ def get_gmail_message(message_id: str) -> dict[str, object]:
 
 
 # ------------------------------------------------------------------
-# POST /api/inbox/gmail/send
+# POST /api/inbox/gmail/send  (per-user)
 # ------------------------------------------------------------------
 
 @router.post("/gmail/send")
-def send_gmail_message(payload: GmailSendPayload) -> dict[str, str]:
-    """Send an email that the user has already reviewed and approved.
-
-    Human-in-the-loop: the frontend must only call this after the user
-    clicks 'Confirm Send'.
-    """
+def send_gmail_message(
+    payload: GmailSendPayload,
+    user_id: str = Depends(_get_user_id),
+) -> dict[str, str]:
+    """Send an email that the user has already reviewed and approved."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         return gmail_service.send_message(
+            user_id=user_id,
             to_email=payload.toEmail,
             subject=payload.subject,
             body=payload.body,

@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from app.core.config import settings
 from app.core.dependencies import (
     agent_runner,
     firestore_service,
@@ -25,6 +26,28 @@ interview_prep = InterviewPrepService()
 skills_service = SkillsAnalysisService(firestore_service)
 
 SAVED_JOBS_COLLECTION = "saved_jobs"
+
+
+def _job_merge_key(j: dict) -> str:
+    jid = str(j.get("id", "")).strip()
+    if jid and not jid.startswith("job-"):
+        return f"id:{jid}"
+    company = str(j.get("company", j.get("employer_name", ""))).strip().lower()
+    title = str(j.get("title", j.get("job_title", ""))).strip().lower()
+    return f"ct:{company}|{title}"
+
+
+def _merge_job_listings(primary: list[dict], secondary: list[dict]) -> list[dict]:
+    """Dedupe by id or company+title; preserve order (JSearch first, then Remotive)."""
+    seen: set[str] = set()
+    out: list[dict] = []
+    for j in primary + secondary:
+        k = _job_merge_key(j)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(j)
+    return out
 
 
 # ------------------------------------------------------------------
@@ -452,16 +475,24 @@ class ApplyFromJobPayload(BaseModel):
 
 @router.post("/jobs/search")
 async def search_jobs(payload: JobSearchPayload) -> dict:
-    """Search jobs via JSearch API with Remotive fallback."""
-    jobs = job_scraper_service.search_jobs(
+    """Search jobs via JSearch (when configured) merged with free Remotive listings."""
+    scraper_jobs = job_scraper_service.search_jobs(
         query=payload.query,
         location=payload.location,
         num_pages=payload.num_pages,
     )
-    # Filter out demo jobs and fall back to free Remotive API
-    jobs = [j for j in jobs if j.get("source") != "demo"]
+    hide_demo = settings.rapidapi_key not in ("demo-key", "")
+    if hide_demo:
+        scraper_jobs = [j for j in scraper_jobs if j.get("source") != "demo"]
+
+    remotive_jobs = await job_search_service.search_jobs(payload.query, limit=24)
+    jobs = _merge_job_listings(scraper_jobs, remotive_jobs)
+
+    if not jobs and not hide_demo:
+        jobs = [j for j in scraper_jobs if j.get("source") == "demo"]
     if not jobs:
         jobs = await job_search_service.search_jobs(payload.query, limit=12)
+
     if payload.filters:
         jobs = job_scraper_service.filter_jobs(jobs, payload.filters)
     return {"jobs": jobs, "count": len(jobs), "query": payload.query}
@@ -488,9 +519,15 @@ async def get_trending_jobs() -> dict:
     trending_queries = ["software engineer", "data scientist", "product manager"]
     seen: set[str] = set()
     jobs: list[dict] = []
+    hide_demo = settings.rapidapi_key not in ("demo-key", "")
     for q in trending_queries:
         results = job_scraper_service.search_jobs(query=q, num_pages=1)
-        real = [j for j in results if j.get("source") != "demo"]
+        if hide_demo:
+            results = [j for j in results if j.get("source") != "demo"]
+        rem = await job_search_service.search_jobs(q, limit=8)
+        real = _merge_job_listings(results, rem)
+        if not real and not hide_demo:
+            real = [j for j in job_scraper_service.search_jobs(query=q, num_pages=1) if j.get("source") == "demo"]
         if not real:
             real = await job_search_service.search_jobs(q, limit=5)
         for j in real:
@@ -506,13 +543,23 @@ async def get_trending_jobs() -> dict:
 # ------------------------------------------------------------------
 
 @router.post("/jobs/recommend")
-def recommend_jobs(payload: JobRecommendPayload) -> dict:
+async def recommend_jobs(payload: JobRecommendPayload) -> dict:
     """Return AI-matched job recommendations ranked by resume fit."""
-    jobs = job_scraper_service.search_jobs(
+    scraper_jobs = job_scraper_service.search_jobs(
         query=payload.query,
         location=payload.location,
         num_pages=payload.num_pages,
     )
+    hide_demo = settings.rapidapi_key not in ("demo-key", "")
+    if hide_demo:
+        scraper_jobs = [j for j in scraper_jobs if j.get("source") != "demo"]
+    remotive = await job_search_service.search_jobs(payload.query, limit=24)
+    jobs = _merge_job_listings(scraper_jobs, remotive)
+    if not jobs and not hide_demo:
+        jobs = [j for j in scraper_jobs if j.get("source") == "demo"]
+    if not jobs:
+        jobs = await job_search_service.search_jobs(payload.query, limit=12)
+
     user_profile = {
         "resume_text": payload.resume_text,
         "preferred_work_mode": payload.preferred_work_mode,

@@ -174,7 +174,7 @@ Representative routes (see `/docs` on a running server for the full list):
 Built by **SparkUp**:
 
 - **Vriddhi** — UI/UX  
-- **Vidhi** — Frontend  
+- **Vidhi** — Frontend, integrated backend endpoints, collaborated on AI and cloud Setup
 - **Aarav** — Backend  
 - **Nishit** — AI and cloud integration  
 
